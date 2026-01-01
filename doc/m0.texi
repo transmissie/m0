@@ -1,0 +1,1089 @@
+\input texinfo @c -*- texinfo -*-
+@comment ========================================================
+@comment %**start of header
+@setfilename m0.info
+@include version.texi
+@settitle M0 @value{VERSION} macro processor
+@documentencoding UTF-8
+@set txicodequoteundirected
+@set txicodequotebacktick
+@set txidefnamenospace
+@setchapternewpage odd
+@finalout
+
+@c @tabchar{}
+@c ----------
+@c The testsuite expects literal tab output in some examples, but
+@c literal tabs in texinfo lead to formatting issues.
+@macro tabchar
+@	@c
+
+@end macro
+
+@c @ovar{ARG}
+@c -------------------
+@c The ARG is an optional argument.  To be used for macro arguments in
+@c their documentation (@defmac).
+@macro ovar{varname}
+@r{[}@var{\varname\}@r{]}
+@end macro
+
+@c @dvar{ARG, DEFAULT}
+@c -------------------
+@c The ARG is an optional argument, defaulting to DEFAULT.  To be used
+@c for macro arguments in their documentation (@defmac).
+@macro dvar{varname, default}
+@r{[}@var{\varname\} = @samp{\default\}@r{]}
+@end macro
+
+@comment %**end of header
+@comment ========================================================
+
+@copying
+
+This manual (@value{UPDATED}) is for M0 (version
+@value{VERSION}), a package containing an implementation of the @code{m0} macro
+processor.
+
+Copyright @copyright{} 2025 Marco de Beurs
+
+
+@quotation
+Permission is granted to copy, distribute and/or modify this document
+under the terms of the GNU Free Documentation License,
+Version 1.3 or any later version published by the Free Software
+Foundation; with no Invariant Sections, no Front-Cover Texts, and no
+Back-Cover Texts.  A copy of the license is included in the section
+entitled ``GNU Free Documentation License.''
+@end quotation
+@end copying
+
+@dircategory Text creation and manipulation
+@direntry
+* M0: (m0).                     A flexible macro processor.
+@end direntry
+
+@titlepage
+@title M0, version @value{VERSION}
+@subtitle A flexible macro processor
+@subtitle Edition @value{EDITION}, @value{UPDATED}
+@author by Marco de Beurs
+@author (@email{m0macroprocessor@@gmail.com})
+
+@page
+@vskip 0pt plus 1filll
+@insertcopying
+@end titlepage
+
+@contents
+
+@ifnottex
+@node Top
+@top M0
+@insertcopying
+@end ifnottex
+
+@code{m0} is an implementation of a flexible macro
+processor.
+
+This is release @value{VERSION}.  Almost everything should work as described, but it is still considered experimental.
+This means that the functions, instructions and options and how they operate are not yet in a final state.
+Although effort is made to keep newer versions compatible with older macro code, this can not be guaranteed.
+
+@c@menu
+@c* Preliminaries::               Introduction and preliminaries
+@c* Macro processing::               Macro processing
+@c* Input processing::               Macro processing
+@c* Patterns::               Patterns
+@c* Programs::               Programs for patterns and macros
+@c* Intro programs::               Introduction to programs
+
+@c* Copying This Package::               How to make copies of the overall M0 package
+@c* GNU General Public License::               License for copying the M0 package
+@c* Copying This Manual::               How to make copies of this manual
+@c* GNU Free Documentation License::               License for copying this manual
+
+
+@c@detailmenu
+@c --- The Detailed Node Listing ---
+
+@c Introduction and preliminaries
+
+@c@end detailmenu
+@c@end menu
+
+@node Preliminaries
+@chapter Introduction and preliminaries
+
+@section For the reader
+
+This document is not a manual for learning to work with macros.
+For learning macros in general the manuals of existing general macro processors such as
+GNU @code{m4} are advised.
+
+This document explains the possibilities, use and flexibility of the @code{m0} macro processor.
+It will allow you to e.g. define your own macro language or to emulate an existing macro processor.
+
+How the macros in @code{m0} work is described in @ref{Macro processing}. Patterns are an important feature
+to provide flexibility of macros and are explained in @ref{Patterns}.
+
+The functions available for macros are listed in @ref{Builtin functions}, the instructions
+available for patterns are listed in @ref{Programs for patterns and macros}.
+
+The @code{m4} emulation example in @ref{M4 emulation example} demonstrates the use
+of @code{m0} to emulate an existing macro processor.
+
+@section Why another macro processor?
+
+Several good general macro processors such as @code{m4}, @code{ML/I} or @code{gpp} exist.
+These macro processors all have their own syntax and have no, some or more flexibility in the macro naming and use.
+They all have macros defined by words or "atoms" and are hereby linked to the known syntax of programming languages.
+
+The purpose of @code{m0} is to have almost no restrictions on syntax and with that maximum flexibility.
+With this flexibility it should even be possible to emulate many of the existing macro processors.
+
+This flexibility goes so far, that at startup only 1 macro is available to name new macros. 
+You have to name the builtin functions and define the syntax first before a complete macro processor is available!  
+
+@section The @code{m0} name?
+
+The @code{m4} macro processor has been inspirational for the development of @code{m0}.
+The much used @code{m4} macro processor has its predecessors named @code{m3} and @code{m6}. An extended macro processor is called @code{m5}.
+
+For a mechanical engineer these names look like metric screw thread. Besides this, @code{m0} has as a goal to be more flexible and have more functionality than @code{m4}. It is however also more basic, in the sense that not much is predefined. This together with the trend of zero sugar drinks seems to make the @code{m0} name appropriate. 
+
+@section Performance?
+
+Intuitively a very flexible general macro processor should be a lot slower in execution than a normal general macro processor. Flexibility normally means more and slower code.
+
+The algorithm used in @code{m0} for detecting macros is a bitap algorithm. This algorithm is fast and flexible at the same time. A preliminary rough estimate (on a relatively modern 64 bit computer) is that @code{m0} with @code{m4} emulation is twice as fast as @code{m4} processing a big file without macros. When processing a big file with macros, @code{m0} has a similar or a little bit better performance as @code{m4}.
+
+
+@node Invoking m0
+@chapter Invoking @code{m0}
+
+@section Introduction
+
+The format for calling @code{m0} is following the "default" GNU and posix rules:
+
+@example
+@code{m0} @r{[}@var{option}@dots{}@r{]} @r{[}@var{file}@dots{}@r{]}
+@end example
+
+The ordering of options is not relevant. The files are processed in order of placement on the command line.
+
+@section Command line options
+
+
+@table @code
+@item -?
+@itemx --help
+Print a help summary on standard output, then immediately exit
+@code{m0} without reading any input files or performing any other
+actions.
+
+@item  --usage
+Print a short usage on standard output, then immediately exit
+@code{m0} without reading any input files or performing any other
+actions.
+
+@item -D @var{name}@r{[}=@var{value}@r{]}
+@itemx --define=@var{name}@r{[}=@var{value}@r{]}
+This enters @var{name} into the macro name table.  If @samp{=@var{value}} is
+missing, the value is taken to be the empty string.  The @var{value} can
+be any string, but the macro can not be defined to take arguments.
+The order with respect to file names is not significant in contrast to some other macro processors.
+
+@item -o @var{file}
+@itemx --output=@var{file}
+Specifies the file to use for output. The default output, when no output file is specified, is standard output.
+
+@item -s
+@itemx --statistics
+Print statistics of the use of macros, macro sets, patterns and internal memories at the end of running the program.
+This is output to standard output.
+
+Can be used as a source for debugging of macros. 
+
+@item -T
+@itemx --traceon
+Set tracing of macros on. Information of the called macros is output to standard output or to a file.
+
+@item -t @var{file}
+@itemx --tracefile=@var{file}
+Specifies the file to output trace information to.
+
+@item -V
+@itemx --version
+Print the version number of the program on standard output, then
+immediately exit @code{m0} without reading any input files or
+performing any other actions.
+
+
+@end table
+
+
+@section Specifying input files on the command line
+
+Multiple input files can be specified on the command line. The files are read in the order in which they are placed on the command line.
+If no file is specified the standard input is taken as input.
+
+A @code{-} specifies standard input as input. This @code{-} can appear multiple times and will also open the standard input multiple times.
+The control-D normally ends the input from standard input in a console.
+
+The position of options compared to the position of the files makes no difference.
+Files placed after @code{--} are also used as input files and are not transferred to
+the argument string for use in the macro processor.
+
+
+
+@section Specifying options for emulation
+
+Options after a @code{--} are not processed as options to @code{m0} (files are however necessarily processed by the @code{m0} program).
+
+These options are put in a string that can be output by a macro function. This string
+can be used to set options in an emulation package of another macro processor. Important options might be the
+definition of macros on the command line or syntax options.
+
+It is however the emulation package that is responsible to process these options. In the @code{m0} program nothing is
+set depending on these options. It would also be difficult to let the @code{m0} program process these options, because these
+options should be known already before the emulation code runs.
+
+
+@node Macro processing
+@chapter Macro processing
+
+@section Introduction
+
+In this part the basics of macro expansion and processing in @code{m0} is explained.
+
+This information is useful to understand the characteristics and flexibility of the processing of macros in @code{m0}.
+It is therefore advised to read this chapter before you start to define your own macros. 
+
+
+
+@node How m0 copies input to output
+@section How @code{m0} copies input to output
+
+In @code{m0} there is no concept of words, atoms or tokens to find macros.
+M0 works with Bitap algorithms and these algorithms work on a character or byte as a basis.
+
+The input bytes are copied to the output until a macro is recognised.
+When a macro is recognised the macro is replaced by a definition of the macro.
+
+This is for a simple macro displayed as: 
+
+@example
+@group
+@verbatim
+
+in:  | | | |m|a|c|r|o| |n|a|m|e| | | | | | | | | | | | | |
+           +-------------------+
+                macro name
+                    |
+                    |
+                    v
+
+out: | | | |d|e|f|i|n|i|t|i|o|n| | | | | | | | | | | | | |
+           +-------------------+
+                definition
+
+@end verbatim
+@end group
+@end example
+
+
+The Bitap algorithm works sequentially on a stream of bytes. Therefore a macro is recognised when the last byte of the macro name is processed.
+The macro name is then removed from the output. After this, the definition is placed in the output. 
+The copying of input to output bytes continues after the definition.
+
+The definition can have any length (also 0) and can contain any character or byte.
+
+
+@node Macro names
+@section Macro names
+
+In most macro processors whitespace is used to recognise macros. The characters that can be used in macro names are limited to a set of allowable characters. For example in @code{m4} the allowable set of characters to recognise macros are alphanumeric characters and underscore. 
+
+The macro names in @code{m0} can contain any byte value (0 -- 255). There is no whitespace necessary in front or after the macro name. Because of this a macro can be recognised when included in a larger name.
+
+The Bitap algorithm allows another useful possibility:
+
+@quotation
+A single character position in the macro name can have a set of possible byte values.
+@end quotation
+
+This possibility can be used in e.g. emulation. The macro names can be started and ended with a whitespace. A whitespace often includes a space, newline, tab and other bytes in the range of 0 -- 0x20. With this whitespace at the start and end of a macro it is no longer recognised inside larger names.
+
+The current implementation using the Bitap algorithm results in a limit for the length of macro names. The macro name can have a maximum of 64 positions. This should be sufficient for most uses; to quote supposedly Bill Gates: 640 Kbytes ought be be enough for anyone!
+
+
+
+@node Macros with arguments
+@section Macros with arguments
+
+A macro whereby only text is replaced is often too limited.
+Therefore most macro processors allow the use of arguments to increase the usefulness of macros.
+
+Arguments are added to the macro with a defined syntax to be able to distinguish the arguments from other text.
+A macro in e.g. @code{m4} looks like a function call as in programming languages.
+In @code{m0} the syntax for arguments is not predefined. The user can define the syntax by using patterns (see @ref{Patterns}).
+
+The arguments in @code{m0} are first placed on a stack.
+The first position on the stack (stack position @code{0}) holds the name of the macro.
+The further positions (stack position @code{1} and up) hold the arguments, whereby the first argument is placed
+on the second position on the stack.
+
+No limit exists for the number of arguments, except memory limitations of the computer.
+
+In @code{m0} the stack can be manipulated by small programs (see @ref{Programs for patterns and macros}) used in patterns and in a macro.
+This enables the flexibility of @code{m0}, whereby the user is able to define the syntax or even define a functionality
+of a macro that is not built in.
+
+In the next section the use of arguments in the definition is explained. The following figure shows 
+symbolically the working of a macro with arguments and stack:
+
+@example
+@group
+@verbatim
+
+in:  | | | |m|a|c|r|o| |n|a|m|e| |a|r|g|u|m|e|n|t|s| | | |
+           +-------------------+---------------------+
+                macro name            arguments
+           
+                                           |          argument n
+                                           |          ----------
+                                           |          ...
+                                           +----->    ----------
+                                                      argument 2
+                     +---------------------------     ----------
+                     |                                argument 1
+                     v                                ----------
+
+out: | | | |d|e|f|i|n|i|t|i|o|n| | | | | | | | | | | | | |
+           +-------------------+
+                definition
+
+@end verbatim
+@end group
+@end example
+
+
+
+@node Symbols for argument substitution
+@section Symbols for argument substitution
+
+It is necessary to be able to substitute the arguments that are placed on the stack in the definition at specific positions in the definition. 
+A default for doing this is defined in a similar way as @code{m4}.
+The position where an argument should be substituted is indicated by the symbol @code{$}.
+After this the number of the stack position is placed. For example @code{$1} is the first argument on the stack.
+
+Also some special symbols like in @code{m4} are defined:
+@table @code
+@item $*
+This symbol returns all arguments.
+@item $@@
+This symbol returns all arguments with quotes.
+@item $#
+This symbol returns the number of arguments.
+@end table
+
+These symbols are defined by default at startup. They can be changed by the user by using the builtin function @code{chararg}. See for the use of this function @ref{Functions for setting symbols}.
+
+
+
+@node Recursion
+@section Recursion
+
+Recursion is running the output of a macro through the macro processor so that possibly more macros are detected from the output of the macro.
+Thus if the definition of a macro contains another macro, this macro will also be expanded.
+
+In @code{m0} this recursion can be activated per macro. This flexibility is needed depending on the purpose of a macro.
+
+Another type of recursion is the detection of macros while collecting arguments of a macro. With this recursion it is possible to construct arguments
+using other macros. Also this recursion type can be activated per macro in @code{m0}.
+
+These recursions can introduce problems when macros that are not wanted are used in the arguments or definition . In e.g. @code{m4} this
+is controlled by using quoting. However in @code{m0} there is no quoting built into the macro processor. If quoting
+is needed in @code{m0} a macro can be defined that functions like quoting. The recursion in this quote macro is set to not active.
+In the M4 emulation example (see @ref{M4 emulation example}) this quoting macro example can be seen. 
+
+The recursion in @code{m0} goes even further than what is possible in other macro processors,
+because the macro processor uses a bitap algorithm that works on characters or bytes. It is possible
+to construct a macro that will be detected and expanded by using two other macros that will together expand to
+the constructed macro.
+
+The following example that is also used in the description of @code{define} can be used to demonstrate this.
+First two macros are defined called @code{aa} and @code{bb}. Macro @code{aa} will expand to @code{te} and macro @code{bb} will
+expand to @code{st}.
+A third macro @code{test} is defined that will expand to @code{Hello World!}.
+
+finally a string @code{aabb} that contains the first two macros is written:
+
+@example
+@group
+
+Define:aa;te
+Define:bb;st
+Define:test;Hello World!
+
+aabb
+
+@end group
+@end example
+
+
+This example will result in:
+
+@example
+
+Hello World!
+
+@end example
+
+What happened is:
+@itemize
+@item first @code{aa} is replaced with @code{te}.
+@item secondly @code{bb} is replaced with @code{st}.
+@item now the word @code{test} has appeared. This is also a macro and thus the @code{test} is
+replaced with @code{Hello World!}.
+@end itemize
+
+Recursion is one of the difficult and confusing aspects of macro processors. It is therefore important to set
+the possible recursions properly when defining a macro. Other macro processors use quoting to overcome issues
+of recursion. This is also possible in @code{m0}. Another way to stop the recursion as in the example above is the use of a virtual
+character in the macro. This is further explained in the description of the @code{define} function.
+
+The settings of recursion are made when defining a macro. See the function @code{define} in @ref{Functions for defining macros}.
+
+
+@node The complete working of macros
+@section The complete working of macros in @code{m0}
+
+In the previous sections the main characteristics and some flexibility of macros in @code{m0} have been
+described. The macros in @code{m0} are however more complex and flexible.
+This section tries to explain the complete working of macros.
+
+An important part of macros that gives a big flexibility is the use of patterns and small programs in macros.
+The use of patterns is even more complex than the macros and therefore is described in a separate chapter, see @ref{Patterns}. 
+The instructions for the small programs can be found in @ref{Programs for patterns and macros}.
+
+The following figure is a symbolic overview of the working of macros in @code{m0}:
+
+@example
+@group
+@verbatim
+in:  | | | |m|a|c|r|o| |n|a|m|e|(|a|r|g|u|m|e|n|t|s|)| | |
+           +-------------------+-+-------------------+
+                macro name     : :     arguments
+           +-+                 +-+            
+         pre-size            post-size     |
+                               : :         v
+                               : :  
+                               | | | | | | | | | | | | |
+                               +-+---+-----+-+----------
+                           pattern for collecting arguments +
+                                     small programs
+    
+                                           |
+                                           |          argument n
+                                           +----->    ----------
+                                                         ...
+       optional program for stack manipulation -->    ----------
+                                                      argument 3
+                                     +------or----    ----------
+                                     |      |         argument 2
+macro definition: | |$|1| |$|2| |    |      |         ----------  <--+
+                  +-------------+    |      |         argument 1  ---|--+
+                   |                 |      |         ----------     |  |
+                   |                 |      |                        |  |
+                   |                 |      +--->  builtin function -+  |
+                   |                 |                   |              |
+                   |    +----------- or --+              +---------+    |
+                   |    |                 |                        |    |
+                   |    |                 |                        |    |
+           +-------or -----------------------> or <--argument 1---------+
+           |            |                 |    |                   |
+           v            v                 v    v                   |
+        default substitution      pattern substitution +           |
+                                     small programs                |
+                |                         |                        |
+                |                +--------+                        |
+                |                v                                 |
+                +--------------> or <------------------------------+
+                                 |    
+                                 v    
+          
+out: | | | | |d|e|f|i|n|i|t|i|o|n| | | | | | | | | | | | |
+           +-+---------------------------+
+           +-+   replacement of macro
+       pre-size
+       
+@end verbatim
+@end group
+@end example
+
+@subsection pre-size and post-size
+
+At the top of the figure a pre-size and post-size of the macro name can be seen. These are options set
+during the definition of a macro.
+
+The pre-size is the part of a macro name that reappears in the output.
+It is however still part of the macro name to detect the macro. Normally this can be used
+to recognise word boundaries by having a pre-size character containing all bytes except the valid characters possible in a macro name.
+
+The post-size is the part of a macro name that reappears in the collection of arguments.
+Normally this is the character to start argument collection, so that a macro
+can be defined which requires arguments.
+It is also used to function as a word boundary like the pre-size.
+
+If the collecting of arguments is aborted (see @code{abort} instruction in @ref{Collecting argument strings}), the post-size is returned to the input.
+This is used for macros that have optionally arguments to collect. 
+
+@subsection Pattern for collecting arguments
+
+After the macro name is detected, the collecting of arguments is the first thing executed.
+This collecting is however only executed if a pattern for the collecting is defined in the macro.
+
+The pattern is used to recognise the delimiters of the arguments and copy the arguments to
+the stack. For example in @code{m4} the delimiters are "@code{(}", "@code{,}" and "@code{)}".
+The default pattern available at startup uses the delimiter "@code{:}" to define the start
+of the argument collection, the "@code{;}" to separate the arguments and the "@code{\n}" (newline) to
+end the collecting of arguments. 
+
+Small forth like programs are used to copy the input to the stack.
+This use of programs allows for flexibility in the syntax of the argument collection and to
+enable extra functionality not available in the builtin macros.
+
+As an example of the flexibility an @code{if else} macro can be made using the
+pattern and the programs. See the @code{ifelse} macro of @code{m4} in @ref{M4 emulation example} as an example
+how this can be programmed. Another example is the @code{eval} macro of the @code{m4} emulation that uses a big pattern for
+all the mathematical and logical operators.
+
+@subsection The stack
+
+The stack is the data store for all the programs. The stack is also the data store for the arguments of a macro.
+
+There are actually eight stacks, whereby the first stack is used for the arguments.
+The additional stacks are used for storing other data during the collecting of arguments.
+
+The first position on the first stack (position @code{0}) holds the name of the macro. This is the name as in the input minus the pre-size and post-size.
+It can be used to get the actual name of the macro when multiple characters were used in the macro name.
+Further positions on the first stack are used to hold arguments. These arguments are placed on the stack by the small
+programs of patterns and can also be manipulated by these programs.
+
+Also the optional program linked to a macro can be used to manipulate the stack. An example use is to set default
+values for a macro that are not set by the argument collection.
+
+The live of the stack is limited. It is started when the macro is recognised and closed after the arguments in the definition are substituted.
+It is thus not possible to exchange information between macros through the stack. 
+
+@subsection Builtin functions
+
+The builtin functions perform functions that are normally not possible using user defined macros.
+The most important functions being the defining functions for macros and patterns.
+
+The builtin functions get their arguments from the stack to perform their function.
+The functions and the used arguments are described in @ref{Builtin functions}.
+
+Some functions will have output and some will also put output on the stack.
+Normally the output of these functions will appear in the output, but this can be suppressed by defining
+a definition string. The definition string can use the information on the stack to output the wanted information.
+
+The use of a builtin function and the definition string at the same time is not excluded.
+The builtin function will be executed before the argument substitution.
+
+If the builtin function is defined in the macro it will unconditionally be executed and if it is not defined in the macro it will obviously not be executed.
+
+@subsection Default argument substitution
+
+To have a syntax for argument substitution available a default argument substitution is defined similar to
+the substitution in @code{m4}. The default argument substitution will use the definition text to 
+substitute default codes with the arguments. If no definition string is defined, then there will obviously be no
+argument substitution.
+
+The default is used when no pattern substitution is defined.
+The default characters used for argument substitution are:
+
+@table @asis
+@item @code{$} followed by a number, example: @code{$1}
+Is used for argument substitution in the definition. The number is the entry of the stack.
+@item @code{$*}
+Is used to output all arguments.
+@item @code{$@@}
+Is used to output all arguments with quotes.
+@item @code{$#}
+Is used to output the number of arguments.
+@item @code{$} followed by an @code{a} -- @code{f} and followed by a number, example: @code{$b2} 
+Is used for argument substitution of arguments from the other stacks in the definition. 
+An @code{a} -- @code{f} after this character in the definition selects the stack. The number after this is the entry of the stack. 
+@end table
+
+These default characters can be changed using the builtin function @code{charagr}. This function is described in @ref{Functions for setting symbols}. 
+
+@subsection Pattern argument substitution
+
+Instead of the default argument substitution a pattern argument substitution will be used when defined in a macro. This can be used for argument substitution with a syntax which you defined yourself. A pattern to handle this should be made before this can be defined in the macro.
+
+If no definition string is defined in the macro, the first argument on the stack is used as replacement text.
+This can be used to have a macro whereby the first argument is e.g. a formatting text that is used by the pattern to
+substitute the arguments.
+
+
+
+@node Sets of macros
+@section Sets of macros
+
+Macros can be grouped in macro sets.
+
+Only one macro set can be active at any one time. By switching between macro sets it is possible to
+switch between groups of macros to be active. It is also possible to call macros in another set by
+using a special macro that calls these macros.
+
+The macro sets thus e.g. allow to hide macros from unwanted being triggered and expanded or
+to switch between macros with a complete different syntax.
+
+
+
+@node At startup
+@section At startup
+
+At startup of @code{m0} only the minimum to be able to start is predefined.
+
+The macro @code{0_define} exists at startup to name builtins and define new macros.
+It uses the pattern @code{0} to collect arguments and is defined in macro set @code{0}.
+The pattern @code{0} uses the "@code{:}" as a start character for argument collection,
+the "@code{;}" as separator between the arguments and a newline (\n) as the stop character
+of the argument collection.
+
+In the macro set @code{0} the characters for argument substitution and character sets are the default 
+characters (@pxref{Functions for setting symbols}).
+
+
+
+
+@node Priority
+@section Priority
+
+It is possible to define a macro with a name whereby this name is part of the name of another macro.
+
+The question for this situation is: will both macros be expanded or only one? If only one which one?
+
+The answer is: it depends.
+
+The triggering of a macro happens when the last character is matched. So if a macro is triggered a character in position 
+in the text before another macro, 
+this macro will expand. The expansion hereof will probably result in the text being replaced and thereby will result in
+a different name for the second macro which will thus not be triggered.
+
+When two macros trigger at the same position in the text, the macro which has the longest name will be
+expanded and the other not. If also the length of the macro names is the same, then the
+first macro defined will be expanded and the other not.
+
+
+
+
+@node Patterns
+@chapter Patterns
+
+@section Introduction
+
+In this part the use and working of patterns is explained.
+
+A pattern is a collection of pattern parts with associated programs.
+The programs are used to perform certain data transactions after a certain pattern part is detected.
+
+Patterns do not function on their own, but are linked to macros when defining a macro.
+Unlike macros, patterns have a global scope and are not restricted to a macro set.
+
+Patterns are mostly used for collecting arguments of macros. However, because of their
+flexibility they can also be used for other purposes such as argument substitution in the definition string or
+perform parser functions for e.g. infix notations.
+
+
+
+
+@node Activation of patterns
+@section Activation of patterns
+
+
+Patterns are not permanently active. They are active from a certain point and end at another:
+
+@itemize
+@item A pattern for collecting arguments is started when a macro has been detected and stops 
+itself when the end of argument collection is detected.
+@item A pattern to substitute the arguments in the definition is started at the begin of the definition and 
+ends automatically at the end of the definition string. The same is applicable when the first argument is
+used as input string.
+@end itemize
+
+As a consequence of the linking to macros, at any one time only one pattern can be active. This does
+of course not exclude the nested use of macros and their associated patterns.
+
+
+
+
+@node Pattern parts
+@section Pattern parts
+
+Pattern parts make up a pattern and are detected in the same way as macros. However they
+do not replace a piece of text, but start a small program to do the necessary work.
+
+
+@subsection Characters and character sets
+
+Pattern parts are detected in the same way as macros, but have more possibilities. Whereas a
+macro name has only the possibility for character or byte sets for a position, pattern parts 
+have also the possibilities to:
+
+@itemize
+@item Define a position with zero or one character or character set.
+The default character used for this is: @code{?}.
+@item Define a position with one or more characters or character set.
+The default character used for this is: @code{+}.
+@item Define a position with zero or more characters or character set.
+The default character used for this is: @code{*}.
+@item Define a position which will only be detected the first time.
+The default character used for this is: @code{~}.
+@end itemize
+
+A set of characters is defined like in macro names with default square brackets.
+An example of all letters in ASCII code for a single position:
+@example
+@verbatim
+[a-zA-Z]       
+@end verbatim
+@end example
+
+The set notation also has to be used for the other mentioned possibilities.
+The special character to define one of the possibilities is placed directly
+behind the set. 
+For example to have zero or one character of a set of all letters:
+@example
+@verbatim
+[a-zA-Z]?       
+@end verbatim
+@end example
+
+As can be seen from the previous examples, the @code{-} is the default to indicate 
+a range of characters in a set.
+
+Instead of the direct indication of a character, also the ASCII number
+can be used to define a character. The default character @code{@@} is used to indicate
+that the following hexadecimal number defines an ASCII character.
+For example:
+@example
+@verbatim
+@41       
+@end verbatim
+@end example
+is the letter @code{A}.
+
+@subsection Matching of a pattern part
+
+A standard pattern part is triggered in the same way as a macro: all
+characters should be in the input to match.
+
+An example: a pattern part defined as @code{[a-z]} will be triggered with an input of
+@code{Hello} at the @code{e}, @code{l}, @code{l} and @code{o}.
+
+A pattern part can also be set to depend on the previous pattern part using an append pattern part function.
+The matching of the appended pattern part will only start if the previous pattern part triggered, just as
+if the two pattern parts are one.
+For example:
+
+First pattern part
+@example
+@verbatim
+el
+@end verbatim
+@end example
+
+Appended pattern part
+@example
+@verbatim
+[a-z]
+@end verbatim
+@end example
+
+With input
+@example
+@verbatim
+Hello
+@end verbatim
+@end example
+
+Will trigger the first pattern part at the end of @code{Hel}
+and trigger the appended pattern part at the following @code{l}.
+
+@subsection Programs
+
+Together with the pattern part a small forth like program is defined.
+This program will need to do the necessary work for the pattern part.
+It is executed when the pattern part is triggered by a match in the input.
+
+All the available instructions for the programs can be found in @ref{Programs for patterns and macros}.
+
+
+
+
+@node Pattern parts working together
+@section Pattern parts working together
+
+The pattern parts together form a pattern that can do something useful. The selection of the parts is therefore
+an important aspect of having a proper working pattern. To illustrate this a similar pattern to 
+the default @code{0} pattern for argument collection is used as an example.
+
+@subsection Example
+
+The following example is a pattern for collecting arguments with a similar syntax as the argument collection of @code{m4}.
+It is however more simple, in that leading spaces in arguments are not excluded and that the argument characters
+"@code{(}" and "@code{)}" can not be nested.
+
+The example uses a @code{0_pattern} macro linked to the pattern function to define a pattern that
+is similar to the default pattern @code{0}, but uses the:
+@itemize
+@item "@code{(}" instead of "@code{:}" as the start character of argument collection.
+@item "@code{,}" instead of "@code{;}" as the separator character of the arguments.
+@item "@code{)}" instead of the newline as the stop character of argument collection.
+@end itemize
+This example is using the pattern @code{0} for argument collection. The new pattern will be named @code{1}.
+
+The complete pattern is defined by:
+
+@example
+@verbatim
+0_pattern:1;[@00-@27@29-@ff]~;argpos =0 ifthen abort
+0_pattern:1;[,)];end
+0_pattern:1;[(,];begin
+0_pattern:1;);stop
+@end verbatim
+@end example
+
+The first line:
+@example
+@verbatim
+0_pattern:1;[@00-@27@29-@ff]~;argpos =0 ifthen abort
+@end verbatim
+@end example
+defines a pattern part consisting of a single character, whereby every character except the "@code{(}" (@code{@@28}) will match.
+It will test if a macro has arguments by checking if the first character is a "@code{(}" or not.
+It is triggered only once (the "@code{~}" is used). Thus if the character in the input is not "@code{(}" the 
+pattern part matches and the program is executed.
+
+The program checks if it is executed at the first position: @code{argpos =0 ifthen}. If it is executed at the
+first position, then the first character in the input is not "@code{(}", no arguments follow and the collection
+of arguments is aborted by: @code{abort}.
+
+If the first character is "@code{(}", then the program will be executed later than the first position and the
+@code{abort} will not be executed.
+
+The second line:
+@example
+@verbatim
+0_pattern:1;[,)];end
+@end verbatim
+@end example
+defines a pattern part consisting of a single character, whereby this character is either a "@code{,}" or a "@code{)}".
+If the input matches, then this is the end of an argument. The argument is then put on the stack by: @code{end}.
+
+The third line:
+@example
+@verbatim
+0_pattern:1;[(,];begin
+@end verbatim
+@end example
+defines a pattern part consisting of a single character, whereby this character is either a "@code{(}" or a "@code{,}".
+If the input matches, then this is the begin of an argument. The argument start position is stored by: @code{begin}.
+
+The last line:
+@example
+@verbatim
+0_pattern:1;);stop
+@end verbatim
+@end example
+defines a pattern part consisting of a single character, whereby this character a "@code{)}".
+If the input matches, then this is means the end the argument collection. The argument collection
+is stopped by: @code{stop}. After this the macro has collected all arguments and continues.
+
+It can be seen that different pattern parts are triggered at the same time by the same input.
+The order of the definition of the pattern parts therefore plays an important role.
+
+@subsection Priorities
+
+Every pattern part that matches will trigger the related program. Thus multiple pattern parts can trigger their
+programs at the same position. The order in which these programs execute can have a big influence on the result,
+therefore the order of execution is:
+
+@quotation
+Pattern parts are triggered in order of definition.
+@end quotation
+
+In the example above the "@code{,}" executes both the @code{end} and @code{begin}.
+This character is the separator between arguments. The previous argument should first be put on the stack by
+the @code{end} and the next argument can then be started by the @code{begin}.Thus the pattern part with the 
+@code{end} is defined before the pattern part with @code{begin}. In a similar way the argument collection
+should put the last argument on the stack before it stops.
+
+The issue of priority can also be overcome by a different pattern definition:
+@example
+@verbatim
+0_pattern:1;[@00-@27@29-@ff]~;argpos =0 ifthen abort
+0_pattern:1;,;end begin
+0_pattern:1;(;begin
+0_pattern:1;);end stop
+@end verbatim
+@end example
+
+However for more complex patterns the priority still plays a role.
+
+
+
+@node Builtin functions
+@chapter Builtin functions
+
+@include chap_builtin.texi
+
+
+@node Programs for patterns and macros
+@chapter Programs for patterns and macros
+
+@include chap_programs.texi
+
+
+@node M4 emulation example
+@chapter M4 emulation example
+
+@section Introduction
+
+The @code{m4} emulation is an example of defining a macro language in @code{m0}.
+It shows the different possibilities and solutions possible with @code{m0}.
+
+It is (at least now) not a goal to be 100% compatible with @code{m4} or to be complete.
+
+Since @code{m0} will also detect macros with invalid characters of @code{m4} macros, it will
+probably be very difficult to be 100% compatible for cases where certain characteristics of
+@code{m4} are used.
+
+Also functions for regular expressions in @code{m0} seem not necessary as this functionality can also
+be accomplished with patterns.
+
+@section Emulation
+
+The following text of the emulation is generated from a source file for both text and code.
+From this source file different versions of @code{m4} are generated. These versions are:
+
+@table @code
+@item v7
+The original version of @code{m4}, see @cite{The M4 Macro Processor, Brian W. Kernighan and Dennis M. Ritchie, Bell Laboratories, July 1, 1977}.
+@item posix
+A version with only the macros defined by posix, see e.g. @url{https://pubs.opengroup.org/onlinepubs/9699919799/utilities/m4.html, m4}.
+@item gnu
+Version with the macros defined in GNU @code{m4}, see @url{https://www.gnu.org/software/m4/manual/m4.html,GNU M4 manual}.
+@item bsd
+Version with the macros defined in @code{m4} of BSD, see e.g. @url{https://man.freebsd.org/cgi/man.cgi?query=m4&sektion=1&format=html, FreeBSD m4 manual page}.
+@end table
+
+Macros or code for all versions is indicated with @code{all}.
+
+@subsection Main design
+
+The emulation of @code{m4} is using three macro sets:
+@enumerate
+@item The default macro set @code{0} is used to define all basic macros that are necessary to
+be able to define the @code{m4} macros. It is also used to hold some @code{m4} macros that are
+build using the basic macros. The emulation starts in this macro set and is switched to the @code{m4exec} macro set 
+to start emulation of the @code{m4} input.
+@item The @code{m4} macros are defined and executed in the macro set @code{m4exec}.
+@item The @code{m4builtin} macro set is used as a collection of builtin @code{m4} macros that
+can be called from the @code{builtin} macro.
+@end enumerate
+
+A big number of the builtin @code{m4} macros are directly linked to the functions in @code{m0}.
+Several patterns are used to implement the syntax of @code{m4}.
+
+Some builtin @code{m4} macros are emulated using a collection of macros in the default macro set @code{0}.
+
+Quoting and comments are implemented as macros as there exists no built in functionality for this in @code{m0}.
+
+Although it it not necessary to use three macro sets, it allows a relatively easy separation of the underlying macro code and the emulated
+macros. Another solution can be a proper naming of underlying macros such that these are unlikely accidentally called.
+
+@include m4emu.texi
+
+
+
+@c ========================================================== Appendices
+
+@node Index for m0 builtins and stack instructions
+@appendix Index for @code{m0} builtins and stack instructions
+
+@appendixsec Builtins
+
+This index covers all @code{m0} builtins.
+References are exclusively to the places where a
+macro is introduced the first time.
+
+@printindex fn
+
+
+@appendixsec Instructions
+
+This index covers all all instructions used
+in programs that work on the stacks.
+References are exclusively to the places where an
+instruction is introduced the first time.
+
+@printindex vr
+
+
+@node Copying This Package
+@appendix How to make copies of the overall M0 package
+@cindex License, code
+
+This appendix covers the license for copying the source code of the
+overall M0 package.  This manual is under a different set of
+restrictions, covered later (@pxref{Copying This Manual}).
+
+@menu
+* GNU General Public License::  License for copying the M0 package
+@end menu
+
+@node GNU General Public License
+@appendixsec License for copying the M0 package
+@cindex GPL, GNU General Public License
+@cindex GNU General Public License
+@cindex General Public License (GPL), GNU
+@include gpl-3.0.texi
+
+@appendixsec License of the SDS library used in the M0 package
+
+@include sds.texi
+
+@node Copying This Manual
+@appendix How to make copies of this manual
+@cindex License, manual
+
+This appendix covers the license for copying this manual.
+
+@menu
+* GNU Free Documentation License::  License for copying this manual
+@end menu
+
+@node GNU Free Documentation License
+@appendixsec License for copying this manual
+@cindex FDL, GNU Free Documentation License
+@cindex GNU Free Documentation License
+@cindex Free Documentation License (FDL), GNU
+@include fdl-1.3.texi
+
+
+@bye
+
+@c Local Variables:
+@c coding: utf-8
+@c fill-column: 72
+@c ispell-local-dictionary: "american"
+@c indent-tabs-mode: nil
+@c whitespace-check-buffer-indent: nil
+@c End:

@@ -1,0 +1,875 @@
+@node Introduction to programs
+@section Introduction to programs
+
+A part of the flexibility of @code{m0} is based on the possibility of using small programs
+executed when a pattern or macro is found.
+
+The programming environment is forth like with stacks to be used for variables and forth like instructions.
+
+Every macro starts its own stack environment for the collection of the arguments. It is thus not possible
+to transfer information between macros through the stack.
+
+
+@node Stacks
+@section Stacks
+
+The programming environment contains 8 stacks.
+The 8 stacks are 8 separate stacks for data and 8 separate stacks for instructions.
+
+The instruction stacks can be used to implement parsers for e.g. infix notation.
+Special instructions are used to put instructions on the instruction stacks.
+Normal instructions execute directly on the active stack. 
+
+Instructions placed on the instruction stacks work on the corresponding data stacks.
+
+An overview of the stacks:
+
+@example
+@group
+@verbatim
+
+ |n| <- top
+ |.|  
+ |.|  
+ |2|  
+ |1| |  | | |  | | |  | | |  | | |  | | |  | | |  | | |
+ |0| |  |0| |  |0| |  |0| |  |0| |  |0| |  |0| |  |0| | <- bottom
+ -----  -----  -----  -----  -----  -----  -----  ----- 
+ |d|i|  |d|i|  |d|i|  |d|i|  |d|i|  |d|i|  |d|i|  |d|i| 
+   a      b      c      d      e      f      g      h   
+
+  a - h = stacks
+  d = data stack
+  i = instruction stack
+  
+  0 = bottom of stack, a[0] = name of macro
+  a[1] = first argument
+  a[n] = argument n
+   
+@end verbatim
+@end group
+@end example
+
+In the following descriptions of instructions the values are indicated as:
+@itemize
+@item top, or last value, or second value when two values are taken from the stack.
+@item top - 1, value below the value at the top of the stack,
+or first value when two values are taken from the stack.
+@item top - 2, value below the top - 1 value.
+@item bottom, value at position 0.
+@end itemize
+
+After the macro is started the stacks are empty, except for position 0 on stack a
+that holds the name of the macro.
+
+The stacks are not cleared between the different possible patterns executed
+inside a macro.
+
+At the end of the macro execution the stacks are deleted.
+
+
+@node Data types
+@section Data types
+
+There are 2 types of data that are placed on the stack:
+
+@table @asis
+@item Strings
+
+Strings are formed by one or more bytes. A string can be put on the top of a stack by enclosing the string in @code{"}.
+
+@item Numbers
+
+Numbers are signed integers with a length of 64 bits. A number can be put on the top of the stack by only using digits (@code{0 - 9}) with a possible @code{-} for negative numbers in the program.
+@end table
+
+These types are automatically converted depending on the instructions used.
+A string can contain a decimal, binary (starts with @code{0b}), octal (starts with @code{0}), hexadecimal (starts with @code{0x}) or radix number (starts with @code{0r} a number between 2 - 36 and @code{:}).
+A number will be converted to a decimal number string.
+
+
+@node Selecting a stack
+@section Selecting a stack
+
+Eight different stacks (@code{a} -- @code{h}) are available. The first stack (@code{a}) is used to place the arguments of a macro.
+The stack to be used must be selected. The default selection after the macro execution is started is stack @code{a}. Thus if no other stack than
+the stack @code{a} is used it is not necessary to select it.
+
+
+@defvr instruction stack_?
+Selects the new active stack. The @code{?} can be a letter from @code{a} -- @code{h} representing stacks @code{a} to @code{h}.
+
+pop: 0
+
+push: 0
+@end defvr
+
+
+
+@node Manipulation on the stack
+@section Manipulation on the stack
+
+@defvr instruction dup
+Duplicates the top entry of the active stack.
+
+pop: 0
+
+push: 1
+@end defvr
+
+@defvr instruction pop
+Pops and thereby removes the top entry of the active stack.
+
+pop: 1
+
+push: 0
+@end defvr
+
+@defvr instruction pop_to_?
+Will pop the stack to the position of the stack indicated by the number (@code{?}). The @code{?} can be a number from @code{0 - 9}.
+
+pop: depending on the stack.
+
+push: 0
+
+@end defvr
+
+@defvr instruction set_base
+Sets the base of stack a to the value on the top of the stack.
+The base is used as the bottom when multiple arguments are output in the default argument
+substitution.
+This can be used to implement a shift macro, that shifts the arguments.
+
+pop: 1
+
+push: 0
+
+@end defvr
+
+@defvr instruction base_=_1
+Same as @code{set_base} whereby the base is set as 1.
+
+pop: 0
+
+push: 0
+
+@end defvr
+
+
+@node Copy between stacks
+@section Copy between stacks
+
+@defvr instruction copyto_?
+Copy the top entry of the active stack to the top on another stack. The @code{?} can be a letter from @code{a - h} representing stacks a to h.
+
+pop: 0
+
+push: 1
+@end defvr
+
+@defvr instruction putarg?
+Copy the top entry of the active stack to position @code{?} of stack @code{a} where the arguments are stored. The @code{?} can be a number 
+from @code{0 - 9} representing the name of the macro (position @code{0}) and the first 9 arguments (positions @code{1 - 9}).
+
+pop: 0
+
+push: 0
+@end defvr
+
+@defvr instruction getarg?
+Copy the entry at position @code{?} of stack @code{a} to the top entry of the active stack. The @code{?} can be a number 
+from @code{0 - 9} representing the name of the macro (position @code{0}) and the first 9 arguments (positions @code{1 - 9}).
+
+pop: 0
+
+push: 1
+@end defvr
+
+@defvr instruction getarg
+Copy the entry of stack @code{a}, at the position indicated by the value at the top of the active stack, to the top entry of the active stack.
+
+pop: 1
+
+push: 1
+@end defvr
+
+@node Collecting argument strings
+@section Collecting argument strings
+
+The following instructions are used for collecting arguments.
+The @code{begin} instructions will set the start position of the argument.
+The @code{end} instructions will set the end position of the argument and copy the argument to the (active) stack.
+If multiple @code{begin} instructions are used before an @code{end} instruction
+only the first use will set the start position.
+
+The arguments are always pushed to the stack as a string.
+
+@defvr instruction begin
+Sets the start position of the argument string at the end position of the pattern match.
+
+pop: 0
+
+push: 0
+@end defvr
+
+@defvr instruction begin-?
+Sets the start position of the argument string at the end position minus the number (@code{?}) of the pattern match. The @code{?} can be @code{1 - 4}.
+
+pop: 0
+
+push: 0
+@end defvr
+
+@defvr instruction begin+?
+Sets the start position of the argument string at the begin position plus the number (@code{?}) of the pattern match. The @code{?} can be @code{0 - 2}.
+This instruction works only correct with a fixed length pattern part.
+
+pop: 0
+
+push: 0
+@end defvr
+
+@defvr instruction end
+Sets the end position of the argument string at the begin position of the pattern match and copies this string to the top of the stack.
+This instruction works only correct with a fixed length pattern part.
+
+pop: 0
+
+push: 1
+@end defvr
+
+@defvr instruction end-?
+Sets the end position of the argument string at the end position of the pattern match minus @code{?} and copies this string to
+the top of the stack. The @code{?} can be @code{0 - 4}.
+
+pop: 0
+
+push: 1
+@end defvr
+
+@defvr instruction abort
+Aborts the collection of arguments. No arguments are collected and the bytes used in the matching till so far are returned to the input.
+Used when no arguments are detected or no argument start is detected after the macro.
+
+pop: 0
+
+push: 0
+
+@end defvr
+
+@defvr instruction stop
+This stops the pattern. Normally used when all arguments are collected e.g. after detecting stop character of arguments.
+It is necessary to use the @code{stop} instruction when collecting arguments, otherwise the complete input will be
+used for the arguments of the macro. This instruction is not needed for the single programs for macros or when using patterns
+to fill in the definition.
+
+pop: 0
+
+push: 0
+
+@end defvr
+
+
+@node Program flow
+@section Program flow
+
+@defvr instruction ifthen
+Pops the top of the stack and continues to the next instruction if @code{true} or skips to the instruction after the next instruction if @code{false}.
+
+pop: 1
+
+push: 0
+@end defvr
+
+@defvr instruction {if else endif}
+Pops the top of the stack and continues to the next instruction if @code{true} or skips to the instruction after the @code{else} if @code{false}.
+The @code{endif} indicates the end of the instructions after the @code{else}. The @code{else} is optional.
+
+pop: 1
+
+push: 0
+@end defvr
+
+
+@defvr instruction nop
+No operation. Does nothing.
+
+pop: 0
+
+push: 0
+@end defvr
+
+
+@node Getting variables
+@section Getting variables
+
+Sometimes it is necessary to have information of the process available.
+This information is available in variables that can be accessed and put on a stack.
+
+@defvr instruction  argpos
+Pushes the current position of the pattern matching to the stack.
+The first position of a pattern is position 0.
+
+pop: 0
+
+push: 1
+@end defvr
+
+@defvr instruction  argnum
+Pushes the number of arguments collected on stack @code{a} to the stack.
+
+pop: 0
+
+push: 1
+@end defvr
+
+
+@node Comparing values
+@section Comparing values
+
+Several compare instructions for comparing values on the stack exist. 
+These instructions push a @code{false} (= @code{0}) or @code{true} (= @code{1}) on the stack.
+
+
+@defvr instruction =?
+Pops the top of the stack and compares this with @code{?}. The @code{?} can be @code{0 - 3}.
+If the values are equal then the return value is 1 otherwise it is 0.
+
+pop: 1
+
+push: 1
+@end defvr
+
+@defvr instruction >?
+Pops the top of the stack and compares this with @code{?}. The @code{?} can be @code{0 - 3}.
+If stack value is larger than the @code{?} then the return value is 1 otherwise it is 0.
+
+pop: 1
+
+push: 1
+@end defvr
+
+@defvr instruction >=?
+Pops the top of the stack and compares this with @code{?}. The @code{?} can be @code{0 - 3}.
+If stack value is larger or equal than the @code{?} then the return value is 1 otherwise it is 0.
+
+pop: 1
+
+push: 1
+@end defvr
+
+@defvr instruction <?
+Pops the top of the stack and compares this with @code{?}. The @code{?} can be @code{0 - 3}.
+If stack value is smaller than the @code{?} then the return value is 1 otherwise it is 0.
+
+pop: 1
+
+push: 1
+@end defvr
+
+@defvr instruction <=?
+Pops the top of the stack and compares this with @code{?}. The @code{?} can be @code{0 - 3}.
+If stack value is smaller or equal than the @code{?} then the return value is 1 otherwise it is 0.
+
+pop: 1
+
+push: 1
+@end defvr
+
+@defvr instruction =
+Pops the two top values of the stack and compares these.
+If the values are equal then the return value is 1 otherwise it is 0.
+
+pop: 2
+
+push: 1
+@end defvr
+
+@defvr instruction !=
+Pops the two top values of the stack and compares these.
+If the values are not equal then the return value is 1 otherwise it is 0.
+
+pop: 2
+
+push: 1
+@end defvr
+
+@defvr instruction >
+Pops the two top values of the stack and compares these.
+If the first value is larger than the second value then the return value is 1 otherwise it is 0.
+
+pop: 2
+
+push: 1
+@end defvr
+
+@defvr instruction >=
+Pops the two top values of the stack and compares these.
+If the first value is larger or equal than the second value then the return value is 1 otherwise it is 0.
+
+pop: 2
+
+push: 1
+@end defvr
+
+@defvr instruction <
+Pops the two top values of the stack and compares these.
+If the first value is smaller than the second value then the return value is 1 otherwise it is 0.
+
+pop: 2
+
+push: 1
+@end defvr
+
+@defvr instruction <=
+Pops the two top values of the stack and compares these.
+If the first value is smaller or equal than the second value then the return value is 1 otherwise it is 0.
+
+pop: 2
+
+push: 1
+@end defvr
+
+
+
+
+@node Mathematical instructions
+@section Mathematical instructions
+
+
+@defvr instruction +
+Pops two values from the top of the stack and adds these values.
+
+pop: 2
+
+push: 1
+@end defvr
+
+@defvr instruction -
+Pops two values from the top of the stack and subtracts the top value from the top - 1 value.
+
+pop: 2
+
+push: 1
+@end defvr
+
+@defvr instruction *
+Pops two values from the top of the stack and multiplies these values.
+
+pop: 2
+
+push: 1
+@end defvr
+
+@defvr instruction /
+Pops two values from the top of the stack and divides these values. 
+
+pop: 2
+
+push: 1
+@end defvr
+
+@defvr instruction mod
+Pops two values from the top of the stack and returns the modulo 
+(rest value after division).
+
+pop: 2
+
+push: 1
+@end defvr
+
+@defvr instruction power
+Pops two values from the top of the stack and returns the power
+(first value to the power of second value).
+
+pop: 2
+
+push: 1
+@end defvr
+
+
+
+@node Logical bit instructions
+@section Logical bit instructions
+
+@defvr instruction shift_l
+Pops two values from the top of the stack and bit shifts first value left by number of bits of second value.
+
+pop: 2
+
+push: 1
+@end defvr
+
+@defvr instruction shift_r
+Pops two values from the top of the stack and bit shifts first value right by number of bits of second value.
+
+pop: 2
+
+push: 1
+@end defvr
+
+@defvr instruction <<1
+Bit shifts value at the top of the stack one bit to the left.
+
+pop: 1
+
+push: 1
+@end defvr
+
+@defvr instruction >>1
+Bit shifts value at the top of the stack one bit to the right.
+
+pop: 1
+
+push: 1
+@end defvr
+
+@defvr instruction bit_and
+Pops two values from the top of the stack and returns the bit AND of these values.
+
+pop: 2
+
+push: 1
+@end defvr
+
+@defvr instruction bit_or
+Pops two values from the top of the stack and returns the bit OR of these values.
+
+pop: 2
+
+push: 1
+@end defvr
+
+@defvr instruction bit_exor
+Pops two values from the top of the stack and returns the bit EXclusive OR of these values.
+
+pop: 2
+
+push: 1
+@end defvr
+
+@defvr instruction ~
+Performs the bit NOT on the value on the top of the stack.
+
+pop: 1
+
+push: 1
+@end defvr
+
+
+
+@node Logical instructions
+@section Logical instructions
+
+@defvr instruction and
+Pops two values from the top of the stack and returns the logical AND.
+
+pop: 2
+
+push: 1
+@end defvr
+
+@defvr instruction or
+Pops two values from the top of the stack and returns the logical OR.
+
+pop: 2
+
+push: 1
+@end defvr
+
+@defvr instruction !
+Pops the top value and returns the logical NOT.
+
+pop: 1
+
+push: 1
+@end defvr
+
+
+@node String instructions
+@section String instructions
+
+@defvr instruction cat
+Concatenates the two strings from the top of the stack, leaving a single string on the stack.
+
+pop: 2
+
+push: 1
+@end defvr
+
+@defvr instruction strcmp
+Compares the two strings from the top of the stack. If the strings are equal a @code{true} is returned to
+the stack, otherwise a @code{false} is returned to the stack.
+
+pop: 2
+
+push: 1
+@end defvr
+
+@defvr instruction ifcmpset
+A special compare instruction to implement if else macros.
+
+It works on the 5 or 3 top positions of the stack. This depends
+on the number of arguments (on stack a) collected so far, not on the actual number of arguments
+on the stack.
+
+If the number of arguments is 3 or a multiple of 3, then the 5 top positions are used.
+If the number of arguments is 1 or a multiple of 3 more (like 4, 7, 10, etc.), then the 3 top positions are used.
+
+The stack should look in case of 5 top positions as:
+@example
+@group
+@verbatim
+
+ top    : string used if compare is true
+ top - 1: second string to compare
+ top - 2: first string to compare
+ top - 3: flag of previous compares
+ top - 4: valid string if flag == 1
+ 
+@end verbatim
+@end group
+@end example
+
+In the case of 5 top positions, the instruction will:
+@itemize
+@item check flag of previous compares.
+@item if flag of previous compares == 0 then compare first and second string.
+@item if strings are equal copy string at top to top - 4 and set flag to 1.
+@item pop top 3 positions.
+@end itemize
+
+
+The stack should look in case of 3 top positions as:
+@example
+@group
+@verbatim
+
+ top    : string used if flag is false
+ top - 1: flag of previous compares
+ top - 2: valid string if flag == 1
+ 
+@end verbatim
+@end group
+@end example
+
+In the case of 3 top positions, the instruction will:
+@itemize
+@item check flag of previous compares.
+@item if flag of previous compares == 0 then copy string at top to top - 2.
+@item pop top position.
+@end itemize
+
+Using this instruction in a pattern enables the implementation of an @code{ifelse}
+macro.
+
+pop: depends on values on stack
+
+push: depends on values on stack
+@end defvr
+
+@defvr instruction strlen
+Pops the top and returns the length of the string.
+
+pop: 1
+
+push: 1
+
+@end defvr
+
+@defvr instruction str*
+Pops the two top positions, multiplies the string at top - 1 by a number at the top position and returns the string.
+
+pop: 2
+
+push: 1
+
+@end defvr
+
+
+
+@node Output manipulation instructions
+@section Output manipulation instructions
+
+These instructions are used by the argument substitution pattern.
+They are used to change the output while processing the input. Since the input
+of argument collection is never directly output (only through the stack), 
+these instructions are normally not useful during argument collection.
+
+The current position in the output, where these instructions are executed, is
+the end of the pattern part.
+
+@defvr instruction get_st
+Get pattern part from the start position of the pattern part and stores the string on the stack.
+
+pop: 0
+
+push: 1
+@end defvr
+
+@defvr instruction get_st+?
+Get pattern part from the start position of the pattern part + offset (@code{?})
+and stores the string on the stack.
+
+The offset (@code{?}) can be 1 to 3.
+
+pop: 0
+
+push: 1
+@end defvr
+
+@defvr instruction getlast?
+Get pattern part from the end position of the pattern part - offset (@code{?})
+and stores the string on the stack.
+
+The offset (@code{?}) can be 1 to 5.
+
+pop: 0
+
+push: 1
+@end defvr
+
+@defvr instruction putoutst
+Replace output from start position set by @code{begin} up to the current position by string on the stack.
+
+pop: 1
+
+push: 0
+@end defvr
+
+@defvr instruction putout
+Replace pattern part by string on the stack.
+
+pop: 1
+
+push: 0
+@end defvr
+
+@defvr instruction putout-?
+Replace output from rearward position (@code{?}) up to the current position by string on the stack.
+
+The rearward position (@code{?}) can be 0 to 5.
+
+pop: 1
+
+push: 0
+@end defvr
+
+
+
+@node Instructions for overruling macro settings
+@section Instructions for overruling macro settings
+
+The following instructions are meant to set the recursion of output the
+calling macro (the @code{mcall}) by the called macro.
+
+@defvr instruction recur_y
+
+Overrules the setting of recursive macro output.
+The macro output is set to recursive.
+
+pop: 0
+
+push: 0
+
+@end defvr
+
+@defvr instruction recur_n
+
+Overrules the setting of recursive macro output.
+The macro output is set to not recursive.
+
+pop: 0
+
+push: 0
+
+@end defvr
+
+@defvr instruction nooverr
+
+Turns the overrule of the setting of recursive macro output off.
+
+pop: 0
+
+push: 0
+
+@end defvr
+
+
+
+@node Operator stack instructions
+@section Operator stack instructions
+
+The following instructions can be used for parsing and work on the instruction stack.
+
+The @code{opex} instructions execute the instructions on the instruction stack or
+store an instruction on the instruction stack depending on a condition. 
+
+
+@defvr instruction opexif>
+Operator execute if (@code{opexif}) will execute the instructions on the instruction stack as long as
+the rank gotten from the top of the stack is larger than the rank of the instruction on the
+instruction stack.
+
+Will push the instruction following the @code{opexif} on the instruction stack with the rank
+gotten from the top of the stack.
+
+pop: 1
+
+push: 0
+@end defvr
+
+@defvr instruction opexif>=
+Same as @code{opexif>} but will execute the instructions as long as the rank is larger or equal
+than the rank of the instruction on the instruction stack.
+
+pop: 1
+
+push: 0
+@end defvr
+
+@defvr instruction opexif<
+Same as @code{opexif>} but will execute the instructions as long as the rank is smaller
+than the rank of the instruction on the instruction stack.
+
+pop: 1
+
+push: 0
+@end defvr
+
+@defvr instruction opexif<=
+Same as @code{opexif>} but will execute the instructions as long as the rank is smaller or equal
+than the rank of the instruction on the instruction stack.
+
+pop: 1
+
+push: 0
+@end defvr
+
+@defvr instruction opexall
+Will execute all the instructions on the instruction stack.
+
+pop: 0
+
+push: 0
+
+@end defvr
+
+@defvr instruction opexto
+Will execute all instructions on the instruction stack until an instruction is found on
+the instruction stack that
+is the same as the instruction after the @code{opexto}.
+This last instruction on the stack will be executed, the instruction after the @code{opexto} not.
+
+pop: 0
+
+push: 0
+@end defvr
+
+@defvr instruction oppush
+Pushes the the instruction after the @code{oppush} on the instruction stack.
+
+pop: 0
+
+push: 0
+@end defvr

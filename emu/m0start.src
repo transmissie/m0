@@ -1,0 +1,80 @@
+COMMENT
+
+Copyright 2025 Marco de Beurs
+ 
+This file is part of m0.
+
+m0 is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License,
+or (at your option) any later version.
+
+m0 is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with m0. If not, see <https://www.gnu.org/licenses/>.
+
+END
+IF:all
+TEXT
+
+All macros are defined.
+This is all straightforward linking of macro names to builtin functions.
+
+END
+CODE
+0_define:0_pattern:;;pattern;nr01 ;0
+0_define:0_append_pattern:;;append_p;nr01 ;0
+0_define:0_undefine:;;undefine;nr01 ;0
+0_define:0_clr_pattern:;;clr_pat;nr01 ;0
+0_define:0_copy_pattern:;;copy_pat;nr01 ;0
+0_define:0_set_var:;;set_var;nr01 ;0
+0_define:0_get_var:;;get_var;nr01 ;0
+0_define:0_ifmacro:;;ifmacro?;rr01 ;0
+0_define:0_argoptions:;;get_var;rr01 ;0;; stack_a pop_to_1 -7
+0_define:0_chars_pattern:;;charpat;nr01 ;0
+0_define:0_chars_args:;;chararg;nr01 ;0
+0_define:0_specialchar:;;specialc;nr01 ;0
+0_define:0_select_macros:;;macroset;nr01 ;0
+END
+IF:all
+TEXT
+
+Setting the defaults. The first is also the default of @code{m0}.
+The second line defines the special characters for the arguments. This is missing the fifth character.
+It is thus not possible to select arguments from other stacks than the first stack.
+
+END
+CODE
+0_chars_pattern:[]-\@+*?~
+0_chars_args:$*@#;1;2;3
+END
+HEADIF:Quoting;all
+TEXT
+
+In the next part a macro with a pattern is used to have quoting internal in the macros operational.
+The quoting is thus not a builtin function in @code{m0}. 
+
+END
+CODE
+0_pattern:0string;[@00-@ff]~;stack_b 1 stack_a begin-1
+0_pattern:0string;+-+;stack_b 1 +
+0_pattern:0string;-+-;stack_b 1 - dup =0 if stack_a end stop endif
+0_define:+-+;$1;;nn00 ;0string
+END
+HEADIF:ifelse;all
+TEXT
+
+END
+CODE
+0_pattern:m4if;[\(]~;stack_b argpos =0 ifthen abort
+0_pattern:m4if;[@00-@ff]~;stack_c 0 stack_a "" 0
+0_pattern:m4if;(;stack_c 1 +
+0_pattern:m4if;);stack_c 1 - dup =0 if stack_a end ifcmpset stop endif
+0_pattern:m4if;[(,][@00- ]*[!-@ff];stack_a begin-1 ;1
+0_pattern:m4if;,;stack_c dup <=1 if stack_a end stack_d argnum 3 mod =0 if stack_a ifcmpset endif endif
+0_define:\Bifelse(;$1;;rr11 ;m4if;; stack_a argnum =1 ifthen pop argnum =2 ifthen pop pop
+END

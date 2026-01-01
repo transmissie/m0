@@ -1,0 +1,22 @@
+M0 is an implementation of a flexible macro processor.
+
+Several good general macro processors such as M4, ML/I or gpp exist. These 
+macro processors all have their own syntax and have no, some or more 
+flexibility in the macro naming and use. They all have macros defined by words 
+or "atoms" and are hereby linked to the known syntax of programming languages.
+
+The purpose of M0 is to have almost no restrictions on syntax and with that 
+maximum flexibility. With this flexibility it should even be possible to 
+emulate many of the existing macro processors.
+
+This is an early release. Almost everything should work as described, but it 
+is still considered experimental. This means that the functions and how they 
+operate are not yet in a final state.
+
+See file `COPYING' for copying conditions.  Note that M0 is distributed under 
+the GNU Public License version 3 or later.
+See file `INSTALL' for compilation and installation instructions.
+
+Send bug reports to `m0macroprocessor@gmail.com'.  A bug report is an adequate 
+description of the problem: your input, what you expected, what you got, and 
+why this is wrong.
