@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Marco de Beurs
+ * Copyright 2025, 2026 Marco de Beurs
  * 
  * This file is part of m0.
  * 
@@ -240,33 +240,39 @@ void close_input(data_buffer *buffer)
   
 }
 
-int read_input(data_buffer *buffer, int reserve)
+int read_input(data_buffer **buffer, int reserve)
 {
   int req_bytes,
       read_bytes,
       i, j;
   
-  if(buffer->position > reserve)
+  if((reserve + input_buffer_size_reserve) > (*buffer)->size)
+  {
+    /* need to increase the buffer to hold all data */
+    *buffer = incr_buffer(*buffer, (reserve + input_buffer_size_reserve));
+  }
+    
+  if((*buffer)->position > reserve)
   {
     /* copy reserved bytes to the beginning of the buffer */
     j = 0;
-    for(i = (buffer->position - reserve); i < buffer->position; i++)
+    for(i = ((*buffer)->position - reserve); i < (*buffer)->position; i++)
     {
-      buffer->data[j] = buffer->data[i];
+      (*buffer)->data[j] = (*buffer)->data[i];
       j++;
     }
-    buffer->position = reserve;
+    (*buffer)->position = reserve;
   }
 
-  req_bytes = buffer->size - buffer->position;
+  req_bytes = (*buffer)->size - (*buffer)->position;
     
-  read_bytes = read(buffer->file, &buffer->data[buffer->position], req_bytes);
+  read_bytes = read((*buffer)->file, &((*buffer)->data[(*buffer)->position]), req_bytes);
   
-  buffer->length = buffer->position + read_bytes;
+  (*buffer)->length = (*buffer)->position + read_bytes;
   
   if (read_bytes < 0)
   {
-    fprintf(stderr, "Error reading file: %s %i: %s.\n", buffer->filename, buffer->file, strerror(errno));
+    fprintf(stderr, "Error reading file: %s %i: %s.\n", (*buffer)->filename, (*buffer)->file, strerror(errno));
     exit(Exit_io);
   }
 

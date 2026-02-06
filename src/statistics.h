@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Marco de Beurs
+ * Copyright 2025, 2026 Marco de Beurs
  * 
  * This file is part of m0.
  * 
@@ -19,7 +19,10 @@
 
 
 extern int statistics[max_size_macro + 1];
+extern int max_position;
 
+extern int stat_vml,
+           stat_vml_max_len;
 
 
 void print_statistics(void);

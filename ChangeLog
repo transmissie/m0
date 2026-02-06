@@ -1,0 +1,13 @@
+1-1-2026   Marco de Beurs
+
+	version 0.1
+	
+	* NEWS: Initial public release.
+
+6-2-2026   Marco de Beurs
+
+	version 0.2
+	
+	* m0: Variable length macros (vlm) are available.
+	* m0: Several bug fixes and checks added.
+	* doc: Updated manual for vlm.

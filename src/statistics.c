@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Marco de Beurs
+ * Copyright 2025, 2026 Marco de Beurs
  * 
  * This file is part of m0.
  * 
@@ -27,11 +27,15 @@
 #include "macros.h"
 #include "stack.h"
 #include "output.h"
+#include "statistics.h"
 
 
 int statistics[max_size_macro + 1];
 int macrocounters[max_size_macro + 1];
-  
+int max_position = size_reduce_history_chars;  
+
+int stat_vml = 0,
+    stat_vml_max_len = 0;
 
 void print_statistics(void)
 {
@@ -54,6 +58,8 @@ void print_statistics(void)
 
   printf(" Total           number of macros: %i, number of calls: %i\n", total_count, total_calls);
 
+  printf("\n Maximum length of vlm macros: %i, number of calls: %i\n", stat_vml_max_len, stat_vml);
+
   printf("\n Used: %i of total %i in program list\n", end_program_list, size_program_list);
 
   printf("\n Used: %i of total %i in division list\n\n", end_div_list, size_div_list);
@@ -62,7 +68,7 @@ void print_statistics(void)
   
   while(bitaps != NULL)
   {
-    printf("Active macro set: %s\n", bitaps->name);
+    printf(" Active macro set: %s\n", bitaps->name);
     bitaps = bitaps->next;
   }
 
@@ -72,8 +78,18 @@ void print_statistics(void)
   
   while(arglists != NULL)
   {
-    printf("Active pattern: %s\n", arglists->name);
+    if(sdslen(arglists->name) != 0)
+    {  
+      printf(" Active pattern: %s\n", arglists->name);
+    }
+    else
+    {
+      printf(" Vlm pattern is active\n");
+    }      
+
     arglists = arglists->prev;
   }
+
+  printf("\n Maximum of history buffer: %i, with reduce limit: %i\n", max_position, size_reduce_history_chars);
 
 }

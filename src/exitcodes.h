@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Marco de Beurs
+ * Copyright 2025, 2026 Marco de Beurs
  * 
  * This file is part of m0.
  * 
@@ -22,7 +22,7 @@
 #define Exit_io 1
 #define Exit_internal 2
 #define Exit_user 3
-
+#define Exit_max_recursion 4 
 
 extern int exit_code;
            

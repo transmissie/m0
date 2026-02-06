@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Marco de Beurs
+ * Copyright 2025, 2026 Marco de Beurs
  * 
  * This file is part of m0.
  * 
@@ -61,7 +61,7 @@ void open_input(char *, data_buffer *);
 
 void close_input(data_buffer *);
 
-int read_input(data_buffer *, int);
+int read_input(data_buffer **, int);
 
 void clear_buffer(data_buffer *, int);
 

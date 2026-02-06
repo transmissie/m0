@@ -2,7 +2,7 @@
 @comment ========================================================
 @comment %**start of header
 @setfilename m0algo.info
-@include version.texi
+@set UPDATED 30 December 2025
 @settitle Bitap algorithms used in M0
 @documentencoding UTF-8
 @set txicodequoteundirected
@@ -41,8 +41,7 @@
 
 @copying
 
-This document is for use with M0 (version
-@value{VERSION}, @value{UPDATED}), a package containing an implementation of the m0 macro
+This document is for use with M0, a package containing an implementation of the m0 macro
 language.
 
 Copyright @copyright{} 2025 Marco de Beurs
@@ -66,6 +65,7 @@ entitled ``GNU Free Documentation License.''
 @titlepage
 @title Bitap algorithms used in M0
 @subtitle A flexible macro processor
+@subtitle @value{UPDATED}
 @author by Marco de Beurs
 @author (@email{m0macroprocessor@@gmail.com})
 

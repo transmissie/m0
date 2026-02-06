@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Marco de Beurs
+ * Copyright 2025, 2026 Marco de Beurs
  * 
  * This file is part of m0.
  * 
@@ -77,21 +77,15 @@ typedef uint64_t pattern_vectors[][size_index]; /* bitap vectors */
 
 typedef struct pattern_masks
 {
-  uint64_t init,                /* initial mask */
-           mask,                /* mask to check result */
-           starmask,            /* mask for one or more in one position */
-           zeromask;            /* mask for zero (used together with one or more) in one position */
-           // onetimemask_init;         /* mask for one time trigger */
-  uint64_t masks[pattern_size_masks];            /* masks to check individual results */ 
-  // uint64_t onetimemasks[pattern_size_masks];     /* masks to check individual results */
-  int masks_end;                /* first free mask */
-  // int onetimemasks_end;          /* first free mask */
-  int masks_run[pattern_size_masks];             /* index to run pattern program */
-  int masks_run_patlen[pattern_size_masks];     /* length of the pattern string; negative length means a one time trigger */
-  int masks_run_level[pattern_size_masks];       /* level of pattern program */
-  // int onetimemasks_run[pattern_size_masks];      /* index to run pattern program */
-  // int onetimemasks_run_patlen[pattern_size_masks];     /* length of the pattern string */
-  // int onetimemasks_run_level[pattern_size_masks]; /* level of pattern program */
+  uint64_t init,                               /* initial mask */
+           mask,                               /* mask to check result */
+           starmask,                           /* mask for one or more in one position */
+           zeromask;                           /* mask for zero (used together with one or more) in one position */
+  uint64_t masks[pattern_size_masks];          /* masks to check individual results */ 
+  int masks_end;                               /* first free mask */
+  int masks_run[pattern_size_masks];           /* index to run pattern program or macro */
+  int masks_run_patlen[pattern_size_masks];    /* length of the pattern string; negative length means a one time trigger */
+  int masks_run_level[pattern_size_masks];     /* level of pattern program */
 } pattern_masks;
 
 typedef struct pattern_data
@@ -146,12 +140,13 @@ extern argument_chars *current_arg_chars;
 
 typedef struct status_bitap
 {
-  vectors  *vec;
-  wordlist *word15;
-  wordlist *word64;
-  argument_chars *argchars;
-  sds name;
-  int quote_var_start,
+  vectors  *vec;             /* the bitap vectors */
+  wordlist *word15;          /* wordlist for macros <= 15 long */
+  wordlist *word64;          /* wordlist for macros > 15 long */
+  pattern_data *patlist;     /* pattern list for variable macros */
+  argument_chars *argchars;  /* the different chars */
+  sds name;                  /* name of the macro set */
+  int quote_var_start,       /* the positions of the quote strings */
       quote_var_end,
       quote_var_separator;
   struct status_bitap *prev; /* pointer to previous status */
@@ -211,10 +206,4 @@ int add_to_wordlist2(wordlist *, int, int);
 
 void delete_from_wordlist(wordlist *, int);
 
-// void rewind_check(int);
-
-
-
-
-// void print_cur_check(void);
-
+void delete_from_pattern(pattern_data *, int, int); 

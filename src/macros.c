@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Marco de Beurs
+ * Copyright 2025, 2026 Marco de Beurs
  * 
  * This file is part of m0.
  * 
@@ -37,9 +37,11 @@
 
 typedef struct
 {
-  int macro_pos;
-  int wordlist_pos;
-  wordlist *list;
+  int macro_pos;     /* position of macro in macro list */
+  int wordlist_pos;  /* position in the wordlist */
+  int vec_num;       /* the vector number of vlm if found */
+  int vec_index;     /* the index in the vector if vlm found */
+  wordlist *list;    /* the wordlist of the found macro */
 } ret_find_macro;
 
 typedef enum 
@@ -119,6 +121,17 @@ sds variables[max_number_variables];
 
 /* the var that holds the return value of a system command */ 
 int sysreturn;
+
+void init_variable(int num)
+{
+  if((num > 0) && (num < max_number_variables))
+  {
+    if(variables[num] == NULL)
+    {
+      variables[num] = sdsnewlen("", 0);
+    }
+  }
+}
 
 void init_macros(void)
 {
@@ -303,7 +316,9 @@ int str_to_charstr(uint8_t *in, int length)
   start = end_charstr;
   
   /* first entry is start */  
-  (charstr[end_charstr]).data.type = charrtype_start;
+  (charstr[start]).data.type = charrtype_start;
+  (charstr[start]).data.start = charrstart_fixed;
+
   end_charstr++;
   
   for(i = 0; i < length; i++)
@@ -336,6 +351,7 @@ int str_to_charstr(uint8_t *in, int length)
               type = charrtype_oneormoreincr;
               in++; /* one further extra for next in input */
               i++;
+              (charstr[start]).data.start = charrstart_variable; /* this is a variable length text */
             }
             else
             {
@@ -345,6 +361,7 @@ int str_to_charstr(uint8_t *in, int length)
                 type = charrtype_zeroormoreincr;
                 in++; /* one further extra for next in input */
                 i++;
+                (charstr[start]).data.start = charrstart_variable; /* this is a variable length text */
               }
               else
               {
@@ -360,9 +377,10 @@ int str_to_charstr(uint8_t *in, int length)
                   /* zero or one mode */
                   if(in[1] == current_charstr_chars->zeroorone)
                   {
-                   type = charrtype_zerooroneincr;
-                   in++; /* one further extra for next in input */
-                  i++;
+                    type = charrtype_zerooroneincr;
+                    in++; /* one further extra for next in input */
+                    i++;
+                    (charstr[start]).data.start = charrstart_variable; /* this is a variable length text */
                   }
                 }
               }
@@ -486,9 +504,10 @@ int str_to_charstr(uint8_t *in, int length)
   /* end of charstr */
   (charstr[end_charstr]).data.type = charrtype_end;
   end_charstr++;
+
   /* fill length of charstr in first entry */  
   (charstr[start]).data.size = len;
-
+      
   /* possibly need to increase charstr */
   increase_charstr();
 
@@ -543,6 +562,7 @@ int find_internal(uint8_t *name, int len)
   return(ret);
 }
 
+
 ret_find_macro find_existing_macro(status_bitap *vecset, uint8_t *name, int macro_len, int len)
 {
   int i,
@@ -552,7 +572,6 @@ ret_find_macro find_existing_macro(status_bitap *vecset, uint8_t *name, int macr
   
   if(macro_len <= 15)
   {
-    // printf(" len <= 15\n");
     ret.list = vecset->word15;
   }
   else
@@ -565,14 +584,13 @@ ret_find_macro find_existing_macro(status_bitap *vecset, uint8_t *name, int macr
     i = 0;
     do
     {
-      // printf(" i: %i__len= %i  macro len= %i %i  macro num: %i\n", i, ret.list->word_length[i], macro_len, len, ret.list->macro[i]);
       /* first quick check */
       if(ret.list->word_length[i] == macro_len)
       {
-          if(debug)
-          {
-            printf(" trying to find \n");
-          }
+        if(debug)
+        {
+          printf(" trying to find \n");
+        }
         /* slow check */
         if(memcmp(name, macro_list[ret.list->macro[i]].name, len) == 0)
         {
@@ -580,7 +598,7 @@ ret_find_macro find_existing_macro(status_bitap *vecset, uint8_t *name, int macr
           
           if(debug)
           {
-           printf("found: %i \n",found);
+            printf("found: %i \n",found);
           }
           
         }
@@ -595,21 +613,78 @@ ret_find_macro find_existing_macro(status_bitap *vecset, uint8_t *name, int macr
     }
   } 
   
+  ret.wordlist_pos = found; /* position in wordlist if macro found in wordlist this is >= 0 */
+  
+  
   if(found >= 0)
   {
+    /* found a normal macro */
     ret.macro_pos = ret.list->macro[found];
+    ret.vec_num = -1;   /* not vlm */
+    ret.vec_index = -1;
   }
   else
   {
-    ret.macro_pos = -1;
-    if(debug)
+    if(vecset->patlist != NULL)
     {
-      printf("found nothing\n");
+      /* try to find a vlm */
+      ret.vec_num = 0;
+      while((found < 0) && (ret.vec_num < vecset->patlist->vec_size))
+      {
+        i = 0;
+        do
+        {
+          /* first quick check */
+          if(vecset->patlist->masks[ret.vec_num].masks_run_patlen[i] == macro_len)
+          {
+            if(debug)
+            {
+              printf(" trying to find \n");
+            }
+
+            /* slow check */
+            if(memcmp(name, macro_list[vecset->patlist->masks[ret.vec_num].masks_run[i]].name, len) == 0)
+            {
+              found = i;
+              
+              if(debug)
+              {
+                printf("found: %i \n",found);
+              }
+            }
+          }
+          
+          i++;
+        } while((i < vecset->patlist->masks[ret.vec_num].masks_end) && (found < 0));
+        
+        if(found < 0)
+        {
+          ret.vec_num++;
+        }
+      } 
+      
+    }
+    
+    if(found < 0)
+    {
+      ret.macro_pos = -1;
+      ret.vec_num = -1;
+      ret.vec_index = -1;
+      
+      if(debug)
+      {
+        printf("found nothing\n");
+      }
+      
+    }
+    else
+    {
+      /* found vlm */
+      ret.macro_pos = vecset->patlist->masks[ret.vec_num].masks_run[found];
+      ret.vec_index = found;
     }
     
   }
-  
-  ret.wordlist_pos = found;
   
   return(ret);
 }
@@ -624,7 +699,7 @@ void output_arg(int argnum, data_buffer **out)
 
   if(ret.length > 0)
   {
-    *out = putchars_buffer(ret.str_p, ret.length, *out);
+    putchars_buffer(ret.str_p, ret.length, out);
   }
 
 }
@@ -792,7 +867,6 @@ void defpush_macro(int defpush, int defcall)
   int macro_name,
       macro_name_len,
       macro_exist,
-      empty,
       value,
       program;
   uint8_t *name;
@@ -863,7 +937,7 @@ void defpush_macro(int defpush, int defcall)
   }
   else
   {
-    if(ret.str_p != NULL)
+    if(ret.length > 0)
     {
       call_vecset = find_or_new_vectorset(ret.str_p, ret.length);
     }
@@ -911,6 +985,14 @@ void defpush_macro(int defpush, int defcall)
     if(value >= 0)
     {
       post_size = value;
+    }
+    else
+    {
+      /* check if the post size is the start of a macro */
+      if(ret.str_p[3] == 'S')
+      {
+        post_size = -1;
+      }
     }
     
     /* optional fifth char for use as virtual char */
@@ -1017,7 +1099,7 @@ void defpush_macro(int defpush, int defcall)
     ret = argument_text(0, 7);
   }
   
-  if(ret.str_p != NULL)
+  if(ret.length > 0)
   {
     vecset = find_or_new_vectorset(ret.str_p, ret.length);
   }
@@ -1116,18 +1198,39 @@ void defpush_macro(int defpush, int defcall)
       {
         printf("\n add macro:%s def:%s: place=%i\n", (macro_list[end_macro_list]).name, (macro_list[end_macro_list]).def, end_macro_list);
       }
-      
-      add_to_vectors2(vecset->vec, macro_name);
-      
-      if(macro_name_len <= 15)
+
+      if((charstr[macro_name]).data.start == charrstart_fixed)
       {
-        empty = add_to_wordlist2(vecset->word15, macro_name, end_macro_list);
+        /* fixed length macro */
+        
+        add_to_vectors2(vecset->vec, macro_name);
       
+        if(macro_name_len <= 15)
+        {
+          add_to_wordlist2(vecset->word15, macro_name, end_macro_list);
+      
+        }
+        else
+        {
+          add_to_wordlist2(vecset->word64, macro_name, end_macro_list);
+      
+        }
       }
       else
       {
-        empty = add_to_wordlist2(vecset->word64, macro_name, end_macro_list);
-      
+        /* variable length macro */
+        if(debug)
+        {
+          printf("\n vlm:%s \n", (macro_list[end_macro_list]).name);
+        }
+
+        if(vecset->patlist == NULL) 
+        {
+          vecset->patlist = init_patternvectors("", 0);  /* should not be found by pattern search */
+        }
+        
+        add_to_patternvector(vecset->patlist, macro_name, end_macro_list, 0, pattern_no_append);
+
       }
       
       end_macro_list++;
@@ -1266,7 +1369,16 @@ void undefpop_macro(int undefpop)
         (macro_list[macro_exist]).name_len = 0;
         sdsfree((macro_list[macro_exist]).def);
         
-        delete_from_wordlist(ret_macro.list, ret_macro.wordlist_pos);
+        if(ret_macro.wordlist_pos >= 0)
+        {
+          /* normal macro */
+          delete_from_wordlist(ret_macro.list, ret_macro.wordlist_pos);
+        }
+        else
+        {
+          /* vlm */
+          delete_from_pattern(vecset->patlist, ret_macro.vec_num, ret_macro.vec_index); 
+        }
         
       }
     }
@@ -1308,12 +1420,13 @@ void info_macro(data_buffer **out)
       len,
       name_len;
   ret_find_macro ret_macro;
-  arg_text_return ret;
+  arg_text_return ret,
+                  macroset;
   pattern_data *arglist,
                  *filllist;
+  status_bitap *vecset;
   uint8_t *name;
   uint8_t options[5];
-  sds macronum;
 
   /* first argument is the name of the macro */
   ret = argument_text(0, 1);
@@ -1326,6 +1439,18 @@ void info_macro(data_buffer **out)
   
   macro_name_len = (charstr[macro_name]).data.size;
   
+  /* second argument is the optional macro set */
+  macroset = argument_text(0, 2);
+
+  if(macroset.length > 0)
+  {
+    vecset = find_vectorset(macroset.str_p, macroset.length);
+  }
+  else
+  {
+    vecset = current_status_bitap;
+  }
+  
   if(debug)
   {
     printf(" info of macro name %.*s %i, %.*s len: %i\n", ret.length, ret.str_p, macro_name, name_len, name, macro_name_len);
@@ -1336,15 +1461,28 @@ void info_macro(data_buffer **out)
     /* the length of the macro is correct */
     
     /* the macro should already exist */
-    ret_macro = find_existing_macro(current_status_bitap, name, macro_name_len, name_len);
+    ret_macro = find_existing_macro(vecset, name, macro_name_len, name_len);
     macro_exist = ret_macro.macro_pos;
     
     if(macro_exist >= 0)
     {
-      /* arg 3: builtin */
+      /* arg 3: builtin or called macro set */
       start = (*out)->position;
-      *out = putchars_buffer((uint8_t *) internal[(macro_list[macro_exist]).builtin].name.n8, 8, *out);
-      set_argument(0, 3, out, start, 8);
+      
+      if((macro_list[macro_exist]).mcallset != NULL)
+      {
+        /* mcall */
+        len = sdslen((macro_list[macro_exist]).mcallset->name);
+        putchars_buffer((macro_list[macro_exist]).mcallset->name, len, out);
+      }
+      else
+      {
+        /* builtin */
+        len = 8;
+        putchars_buffer((uint8_t *) internal[(macro_list[macro_exist]).builtin].name.n8, 8, out);
+      }
+      
+      set_argument(0, 3, out, start, len);
       
       
       /* fill options string */
@@ -1367,12 +1505,21 @@ void info_macro(data_buffer **out)
       }
       
       options[2] = (macro_list[macro_exist]).pre_size + '0';
-      options[3] = (macro_list[macro_exist]).post_size + '0';
+
+      if((macro_list[macro_exist]).post_size >= 0)
+      {
+        options[3] = (macro_list[macro_exist]).post_size + '0';
+      }
+      else
+      {
+        options[3] = 'S';
+      }
+      
       options[4] = (macro_list[macro_exist]).virtual_char;
       
       /* arg 4: options */
       start = (*out)->position;
-      *out = putchars_buffer(options, 5, *out);
+      putchars_buffer(options, 5, out);
       set_argument(0, 4, out, start, 5);
 
       /* arg 5: argument pattern */
@@ -1381,7 +1528,7 @@ void info_macro(data_buffer **out)
       if(arglist != NULL)
       {
         len = sdslen(arglist->name);
-        *out = putchars_buffer( arglist->name, len, *out);
+        putchars_buffer( arglist->name, len, out);
       }
       else
       {
@@ -1395,7 +1542,7 @@ void info_macro(data_buffer **out)
       if(filllist != NULL)
       {
         len = sdslen(filllist->name);
-        *out = putchars_buffer( filllist->name, len, *out);
+        putchars_buffer( filllist->name, len, out);
       }
       else
       {
@@ -1411,21 +1558,36 @@ void info_macro(data_buffer **out)
       }
       set_argument(0, 7, out, start, (*out)->position - start);
 
-      /* arg 8: internal macro number */
-      macronum = sdsfromlonglong((long long int) macro_exist);
+      /* arg 8: macro set */
       start = (*out)->position;
-      len = sdslen(macronum);
-      *out = putchars_buffer(macronum, len, *out);
+      len = sdslen(vecset->name);
+      putchars_buffer(vecset->name, len, out);
       set_argument(0, 8, out, start, len);
-      sdsfree(macronum);
+
+      /* arg 9: macro or mcall */
+      start = (*out)->position;
+      if((macro_list[macro_exist]).mcallset != NULL)
+      {
+        /* mcall */
+        putchars_buffer("mcall", 5, out);
+      }
+      else
+      {
+        /* builtin */
+        putchars_buffer("macro", 5, out);
+      }
       
-      /* arg 2: definition */
+      set_argument(0, 9, out, start, 5);
+
+
+      
+      /* arg 2: definition or called macro */
       /* output of macro is the definition */
       (*out)->start = (*out)->position;
       // *out = putchars_buffer(variables[var_num_quotestart], sdslen(variables[var_num_quotestart]), *out);
       /* on the stack the definition without quotes */
       start = (*out)->position;
-      *out = putchars_buffer((macro_list[macro_exist]).def, (macro_list[macro_exist]).def_len, *out);
+      putchars_buffer((macro_list[macro_exist]).def, (macro_list[macro_exist]).def_len, out);
       set_argument(0, 2, out, start, (macro_list[macro_exist]).def_len);
 
       // *out = putchars_buffer(variables[var_num_quoteend], sdslen(variables[var_num_quoteend]), *out);
@@ -1744,7 +1906,7 @@ void exec_command(data_buffer **out)
     io_size = getline(&io_buffer, &io_buffer_size, io);
     if(io_size > 0)
     {
-      *out = putchars_buffer(io_buffer, io_size, *out);
+      putchars_buffer(io_buffer, io_size, out);
     }
   } while(io_size > 0);
   
@@ -1806,7 +1968,7 @@ void tempfile(data_buffer **out)
 
   }
   
-  *out = putchars_buffer(template, sdslen(template), *out);
+  putchars_buffer(template, sdslen(template), out);
   
   sdsfree(template);
 }
@@ -1837,7 +1999,7 @@ void include_file_ornot(data_buffer **out, int silent)
       *out = reserve_buffer(*out, input_buffer_size);
       
       /* read the first input to fill the buffer */
-      read_input(*out, 0);
+      read_input(out, 0);
       /* need to set position, because this is expected to be like this
        * in the exec_macro function
        */ 
@@ -1986,7 +2148,7 @@ void undivert(data_buffer **out)
 
     if(((*out)->divnum != ret) && (ret > 0))
     {
-      *out = flush_diversion(ret, *out);
+      flush_diversion(ret, out);
     }
 
     if(debug)
@@ -1997,7 +2159,7 @@ void undivert(data_buffer **out)
 
   if(num_args == 0)
   {
-    *out = flush_all_diversions(*out);
+    flush_all_diversions(out);
   }
 
 }
@@ -2118,7 +2280,7 @@ void get_var(data_buffer **out)
     {
       len = sdslen(variables[ret]);
 
-      *out = putchars_buffer(variables[ret], len, *out);
+      putchars_buffer(variables[ret], len, out);
     }
   }
   else
@@ -2131,41 +2293,41 @@ void get_var(data_buffer **out)
         case -1:
           /* diversion number */
           value = sdsfromlonglong((long long int) (*out)->divnum);
-          *out = putchars_buffer(value, sdslen(value), *out);
+          putchars_buffer(value, sdslen(value), out);
           sdsfree(value);
           break;
         case -2:
           /* os */
-          *out = putchars_buffer("unix", 4, *out);
+          putchars_buffer("unix", 4, out);
           break;
         case -3:
           /* line number */
           value = sdsfromlonglong((long long int) line_counter);
-          *out = putchars_buffer(value, sdslen(value), *out);
+          putchars_buffer(value, sdslen(value), out);
           sdsfree(value);
           break;
         case -4:
           /* local line number */
           value = sdsfromlonglong((long long int) local_line_counter);
-          *out = putchars_buffer(value, sdslen(value), *out);
+          putchars_buffer(value, sdslen(value), out);
           sdsfree(value);
           break;
         case -5:
           /* current file name */
-          *out = putchars_buffer(current_input_file_buffer->filename, strlen(current_input_file_buffer->filename), *out);
+          putchars_buffer(current_input_file_buffer->filename, strlen(current_input_file_buffer->filename), out);
           break;
         case -6:
           /* program name */
-          *out = putchars_buffer(program_name, strlen(program_name), *out);
+          putchars_buffer(program_name, strlen(program_name), out);
           break;
         case -7:
           /* program options after -- */
-          *out = putchars_buffer(arg_options, strlen(arg_options), *out);
+          putchars_buffer(arg_options, strlen(arg_options), out);
           break;
         case -8:
           /* the return value of an executed shell command */
           value = sdsfromlonglong((long long int) sysreturn);
-          *out = putchars_buffer(value, sdslen(value), *out);
+          putchars_buffer(value, sdslen(value), out);
           sdsfree(value);
           break;
       }
@@ -2208,7 +2370,7 @@ void string_index(data_buffer **out)
 
   value = sdsfromlonglong(index);
   set_argument(0, 3, out, (*out)->position, sdslen(value));
-  *out = putchars_buffer(value, sdslen(value), *out);
+  putchars_buffer(value, sdslen(value), out);
   sdsfree(value);
 
 }
@@ -2225,7 +2387,7 @@ void num_to_char(data_buffer **out)
   {
     character = (uint8_t) num;
     set_argument(0, 2, out, (*out)->position, 1);
-    *out = putchar_buffer(character, *out);
+    putchar_buffer(character, out);
   }
 
 }
@@ -2262,7 +2424,7 @@ void string_substr(data_buffer **out)
     start = main_string.str_p + from;
 
     set_argument(0, 4, out, (*out)->position, length);
-    *out = putchars_buffer(start, length, *out);
+    putchars_buffer(start, length, out);
   }
 
 }
@@ -2390,15 +2552,15 @@ void string_translate(data_buffer **out)
     if(trans[*string] >= 0)
     {
       transchar = (uint8_t) trans[*string];
-      *out = putchar_buffer(transchar, *out);
+      putchar_buffer(transchar, out);
       arg_len++;
     }
     else
     {
       if(trans[*string] == -2)
       {
-        *out = putchar_buffer(*string, *out);
-         arg_len++;
+        putchar_buffer(*string, out);
+        arg_len++;
       }
     }
     
@@ -2473,24 +2635,24 @@ void number_to_string(data_buffer **out)
     switch(radix)
     {
       case 2:
-        *out = putchars_buffer("0b", 2, *out);
+        putchars_buffer("0b", 2, out);
         break;
       case 16:
-        *out = putchars_buffer("0x", 2, *out);
+        putchars_buffer("0x", 2, out);
         break;
       case 8:
-        *out = putchar_buffer('0', *out);
+        putchar_buffer('0', out);
         break;
       case 10:
         break;
       default:
-        *out = putchars_buffer("0r", 2, *out);
+        putchars_buffer("0r", 2, out);
         if(radix > 9)
         {
-          *out = putchar_buffer(numtoascii[(radix / 10)], *out);
+          putchar_buffer(numtoascii[(radix / 10)], out);
         }
-        *out = putchar_buffer(numtoascii[(radix % 10)], *out);
-        *out = putchar_buffer(':', *out);
+        putchar_buffer(numtoascii[(radix % 10)], out);
+        putchar_buffer(':', out);
     }
     
     set_argument(0, 4, out, start, (*out)->position - start);
@@ -2507,7 +2669,7 @@ void number_to_string(data_buffer **out)
     
     /* output string of number in binary form */
     start = (*out)->position;
-    *out = putchars_buffer(&str[str_pos + 1], (63 - str_pos), *out);
+    putchars_buffer(&str[str_pos + 1], (63 - str_pos), out);
     set_argument(0, 5, out, start, (*out)->position - start);
     
     
@@ -2517,7 +2679,7 @@ void number_to_string(data_buffer **out)
     start = (*out)->position;
     if(neg == -1)
     {
-      *out = putchar_buffer('-', *out);
+      putchar_buffer('-', out);
     }
     set_argument(0, 6, out, start, (*out)->position - start);
 
@@ -2535,13 +2697,13 @@ void number_to_string(data_buffer **out)
     start = (*out)->position;
     for(i = 0; i < (width - 63 + str_pos); i++)
     {
-      *out = putchar_buffer('0', *out);
+      putchar_buffer('0', out);
     }
     set_argument(0, 7, out, start, (*out)->position - start);
     
     /* output string of number */
     start = (*out)->position;
-    *out = putchars_buffer(&str[str_pos + 1], (63 - str_pos), *out);
+    putchars_buffer(&str[str_pos + 1], (63 - str_pos), out);
     set_argument(0, 8, out, start, (*out)->position - start);
     
   }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Marco de Beurs
+ * Copyright 2025, 2026 Marco de Beurs
  * 
  * This file is part of m0.
  * 
@@ -349,6 +349,7 @@ status_bitap *new_vectorset(uint8_t *setname, int length)
   new_status_bitap->vec = init_vectors();
   new_status_bitap->word64 = init_wordlist(64);
   new_status_bitap->word15 = init_wordlist(15);
+  new_status_bitap->patlist = NULL; /* initially not used */
   new_status_bitap->argchars = init_arg_chars('$', '*', '@', '#', '$');
   new_status_bitap->quote_var_start = 1;
   new_status_bitap->quote_var_end = 2;
@@ -359,6 +360,10 @@ status_bitap *new_vectorset(uint8_t *setname, int length)
 
   add_arg_to_vectors(new_status_bitap->vec, new_status_bitap->argchars);
 
+  init_variable(1);
+  init_variable(2);
+  init_variable(3);
+  
   if(new_status_bitap->prev != NULL)
   {
     last_status_bitap->next = new_status_bitap;
@@ -676,16 +681,6 @@ void add_to_patternvector(pattern_data (*pat_dat), int pattern, int program, int
       /* is this a trigger character? write trigger mask */
       if((charstr[pattern]).data.type == charrtype_trigincr)
       {
-//         if(masks[j].onetimemasks_end < pattern_size_masks)
-//         {
-//           masks[j].onetimemask_init |= set_bit_mask;
-//           masks[j].onetimemasks[masks[j].onetimemasks_end] = set_bit_mask;
-//           masks[j].onetimemasks_run[masks[j].onetimemasks_end] = program;
-//           masks[j].onetimemasks_run_patlen[masks[j].onetimemasks_end] = pattern_len;
-//           masks[j].onetimemasks_run_level[masks[j].onetimemasks_end] = level;
-//       
-//           masks[j].onetimemasks_end++;
-//         }
         if(masks[j].masks_end < pattern_size_masks)
         {
           masks[j].mask |= set_bit_mask;
@@ -993,6 +988,63 @@ void delete_from_wordlist(wordlist *list, int entry)
   
 }
 
+void delete_from_pattern(pattern_data *patlist, int vec_num, int vec_index) 
+{
+  int i,
+      j;
+  uint64_t set_bit_mask,
+  check_mask;
+  pattern_vectors (*vec);    
+  
+  vec = patlist->vec;
+  
+  check_mask = patlist->masks[vec_num].masks[vec_index];
+  
+  i = patlist->masks[vec_num].masks_run_patlen[vec_index];
+  
+  while(i > 0)
+  {
+    set_bit_mask = 0ULL;
+   
+    /* make the clearing mask */
+    while((i > 0) && (check_mask != 0ULL)) 
+    {
+      set_bit_mask |= check_mask;
+      check_mask >>= 1;
+      i--;
+    }  
+    
+    set_bit_mask = ~set_bit_mask;
+    
+    /* reset all */
+    patlist->masks[vec_num].masks_run_patlen[vec_index] = 0;
+    patlist->masks[vec_num].masks[vec_index] = 0ULL;
+    
+    patlist->masks[vec_num].init &= set_bit_mask;
+    patlist->masks[vec_num].mask &= set_bit_mask;
+    patlist->masks[vec_num].starmask &= set_bit_mask;
+    patlist->masks[vec_num].zeromask &= set_bit_mask;
+    
+    /* set the bits in the vectors */
+    for(j = 0; j < size_index; j++)
+    {
+      (*vec)[vec_num][j] &= set_bit_mask;
+    }
+    
+    if(check_mask == 0ULL)
+    {
+      /* need to start at the end of the preceding vectors and masks */
+      check_mask = 0b1LL << 63;
+      vec_num --;
+    }
+  }
+  
+  if(debug)
+  {
+    printf("\n deleting pattern place vector: %i  index: %i\n", vec_num, vec_index);
+  }
+  
+}
 
 
 

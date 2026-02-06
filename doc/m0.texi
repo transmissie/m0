@@ -2,7 +2,7 @@
 @comment ========================================================
 @comment %**start of header
 @setfilename m0.info
-@include version.texi
+@include version-m0.texi
 @settitle M0 @value{VERSION} macro processor
 @documentencoding UTF-8
 @set txicodequoteundirected
@@ -303,14 +303,33 @@ The definition can have any length (also 0) and can contain any character or byt
 @node Macro names
 @section Macro names
 
+Internally @code{m0} has two types of macros:
+
+@itemize
+@item Normal macros.
+@item Variable length macros (vlm).
+@end itemize
+
+Although the user does not have to handle these different types differently when defining a macro, they have different
+possibilities that should be known.
+
+@subsection Normal macros
+
 In most macro processors whitespace is used to recognise macros. The characters that can be used in macro names are limited to a set of allowable characters. For example in @code{m4} the allowable set of characters to recognise macros are alphanumeric characters and underscore. 
 
 The macro names in @code{m0} can contain any byte value (0 -- 255). There is no whitespace necessary in front or after the macro name. Because of this a macro can be recognised when included in a larger name.
 
-The Bitap algorithm allows another useful possibility:
+The Bitap algorithm used in @code{m0} allows another useful possibility:
 
 @quotation
 A single character position in the macro name can have a set of possible byte values.
+
+For example:
+@example
+[Nn]ame
+@end example
+means the word "name" starting with a capital or small n.
+
 @end quotation
 
 This possibility can be used in e.g. emulation. The macro names can be started and ended with a whitespace. A whitespace often includes a space, newline, tab and other bytes in the range of 0 -- 0x20. With this whitespace at the start and end of a macro it is no longer recognised inside larger names.
@@ -318,6 +337,30 @@ This possibility can be used in e.g. emulation. The macro names can be started a
 The current implementation using the Bitap algorithm results in a limit for the length of macro names. The macro name can have a maximum of 64 positions. This should be sufficient for most uses; to quote supposedly Bill Gates: 640 Kbytes ought be be enough for anyone!
 
 
+@subsection Variable length macros
+
+A macro name can also be defined having a variable length. This means that the macro name recognised in the processed text can have parts
+that are variable in length. A variable length macro is thus a macro that has in addition to normal macros parts that have a variable length. 
+
+For example a macro with name:
+@example
+[Nn]*ame
+@end example
+ 
+would be recognised in all of the following examples:
+@example
+Name
+ame
+NNName
+nnnnnname
+NnNname
+@end example
+
+The @code{[Nn]*} means zero or more characters being a capital or small n.
+
+The variable length macro can be used for recognising patterns or regular expressions. In the current implementation the variable part
+is limited to a single character or set of characters, although it is possible to have multiple variable parts. The possibilities are
+equal to the pattern parts explained later. 
 
 @node Macros with arguments
 @section Macros with arguments
@@ -538,7 +581,11 @@ can be defined which requires arguments.
 It is also used to function as a word boundary like the pre-size.
 
 If the collecting of arguments is aborted (see @code{abort} instruction in @ref{Collecting argument strings}), the post-size is returned to the input.
-This is used for macros that have optionally arguments to collect. 
+This is used for macros that have optional arguments to collect.
+
+The possibility to abort the collecting of arguments has as a consequence that macros will not be called during the processing of the 
+post-size. If this was not the case, macros could be called before the abort, whereas they should be called after the abort.
+The post-size is however still used to detect a (part of a) macro.
 
 @subsection Pattern for collecting arguments
 
@@ -575,7 +622,7 @@ programs of patterns and can also be manipulated by these programs.
 Also the optional program linked to a macro can be used to manipulate the stack. An example use is to set default
 values for a macro that are not set by the argument collection.
 
-The live of the stack is limited. It is started when the macro is recognised and closed after the arguments in the definition are substituted.
+The life of the stack is limited. It is started when the macro is recognised and closed after the arguments in the definition are substituted.
 It is thus not possible to exchange information between macros through the stack. 
 
 @subsection Builtin functions

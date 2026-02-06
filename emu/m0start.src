@@ -1,6 +1,6 @@
 COMMENT
 
-Copyright 2025 Marco de Beurs
+Copyright 2025, 2026 Marco de Beurs
  
 This file is part of m0.
 
@@ -26,19 +26,21 @@ This is all straightforward linking of macro names to builtin functions.
 
 END
 CODE
-0_define:0_pattern:;;pattern;nr01 ;0
-0_define:0_append_pattern:;;append_p;nr01 ;0
-0_define:0_undefine:;;undefine;nr01 ;0
-0_define:0_clr_pattern:;;clr_pat;nr01 ;0
-0_define:0_copy_pattern:;;copy_pat;nr01 ;0
-0_define:0_set_var:;;set_var;nr01 ;0
-0_define:0_get_var:;;get_var;nr01 ;0
-0_define:0_ifmacro:;;ifmacro?;rr01 ;0
-0_define:0_argoptions:;;get_var;rr01 ;0;; stack_a pop_to_1 -7
-0_define:0_chars_pattern:;;charpat;nr01 ;0
-0_define:0_chars_args:;;chararg;nr01 ;0
-0_define:0_specialchar:;;specialc;nr01 ;0
-0_define:0_select_macros:;;macroset;nr01 ;0
+0_define:0_pattern:;;pattern;nr01;0
+0_define:0_append_pattern:;;append_p;nr01;0
+0_define:0_undefine:;;undefine;nr01;0
+0_define:0_push:;;push;nr01;0
+0_define:0_pop:;;pop;nr01;0
+0_define:0_clr_pattern:;;clr_pat;nr01;0
+0_define:0_copy_pattern:;;copy_pat;nr01;0
+0_define:0_set_var:;;set_var;nr01;0
+0_define:0_get_var:;;get_var;nr01;0
+0_define:0_ifmacro:;;ifmacro?;rr01;0
+0_define:0_argoptions:;;get_var;rr01;0;; stack_a pop_to_1 -7
+0_define:0_chars_pattern:;;charpat;nr01;0
+0_define:0_chars_args:;;chararg;nr01;0
+0_define:0_specialchar:;;specialc;nr01;0
+0_define:0_select_macros:;;macroset;nr01;0
 END
 IF:all
 TEXT
@@ -51,6 +53,8 @@ END
 CODE
 0_chars_pattern:[]-\@+*?~
 0_chars_args:$*@#;1;2;3
+0_set_var:1;+-+
+0_set_var:2;-+-
 END
 HEADIF:Quoting;all
 TEXT
@@ -64,6 +68,7 @@ CODE
 0_pattern:0string;+-+;stack_b 1 +
 0_pattern:0string;-+-;stack_b 1 - dup =0 if stack_a end stop endif
 0_define:+-+;$1;;nn00 ;0string
+0_set_var:3;+-+;-+-
 END
 HEADIF:ifelse;all
 TEXT

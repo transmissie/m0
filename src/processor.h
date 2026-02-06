@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Marco de Beurs
+ * Copyright 2025, 2026 Marco de Beurs
  * 
  * This file is part of m0.
  * 
@@ -44,4 +44,4 @@ void init_process(char *, data_buffer *);
 
 void close_process(data_buffer **);
 
-void process_input(data_buffer *, data_buffer **, run_macro);
+void process_input(data_buffer **, data_buffer **, run_macro);

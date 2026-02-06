@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Marco de Beurs
+ * Copyright 2025, 2026 Marco de Beurs
  * 
  * This file is part of m0.
  * 
@@ -59,11 +59,11 @@ typedef struct macro_def
  * Multiple entries defining a name are called here a charstr (character string).
  * A single charstr is defined as:
  * 
- * entry type           size                                  start       end
- *   1   start          length of string as input to vectors  na          na
- *   2   char/charincr  increment size: 0 / 1                 start byte  end byte
+ * entry type           size                                  start                    end
+ *   1   start          length of string as input to vectors  fixed / variable length  na
+ *   2   char/charincr  increment size: 0 / 1                 start byte               end byte
  *   3   additional chars if applicable
- *   4   end            na                                    na          na
+ *   4   end            na                                    na                       na
  * 
  *  The increment determines if the next entry should start at the next position.
  */
@@ -105,6 +105,10 @@ typedef union
 /* end of charstring */
 #define charrtype_end  'e'
 
+/* fixed / variable length in start: fixed */
+#define charrstart_fixed  'f'
+/* fixed / variable length in start: variable */
+#define charrstart_variable  'v'
 
 
 typedef struct 
@@ -146,13 +150,13 @@ extern sds variables[max_number_variables];
 
 extern const builtins internal[];
 
-
-
 extern char_range (*charstr);
 
 extern charstr_chars (*current_charstr_chars);
 
 extern macro_def (*macro_list);
+
+void init_variable(int);
 
 charstr_chars *init_charstr_chars(uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t);
 

@@ -1,4 +1,4 @@
-@set UPDATED 27 December 2025
-@set UPDATED-MONTH December 2025
-@set EDITION 0.1
-@set VERSION 0.1
+@set UPDATED 28 January 2026
+@set UPDATED-MONTH January 2026
+@set EDITION pre-0.2
+@set VERSION pre-0.2

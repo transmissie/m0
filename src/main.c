@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Marco de Beurs
+ * Copyright 2025, 2026 Marco de Beurs
  * 
  * This file is part of m0.
  * 
@@ -273,14 +273,14 @@ int main (int argc, char **argv)
     current_input_file_buffer = file_input;
     
     /* read the first input to fill the buffer and start processing */
-    read_input(file_input, 0);
+    read_input(&file_input, 0);
     
     if(debug)
     {
       printf("\n\n ------------- \n size: %i\n -------------\n", file_input->length);
     }
     
-    process_input(file_input, &file_output, Run_macro_yes);
+    process_input(&file_input, &file_output, Run_macro_yes);
       
     
     close_input(file_input);

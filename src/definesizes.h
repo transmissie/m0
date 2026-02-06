@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Marco de Beurs
+ * Copyright 2025, 2026 Marco de Beurs
  * 
  * This file is part of m0.
  * 
@@ -29,12 +29,14 @@
  * at the cost of more memory use
  */
 
-#define input_buffer_size 4000
+#define input_buffer_size 100
+#define input_buffer_size_reserve 50
 
 #define init_size_processbuf 100
 #define add_size_processbuf 1000 
 
-#define output_buffer_size 4000
+#define output_buffer_size 100
+#define output_buffer_size_reserve 50
 
 #define div_entry_size 1000
 
@@ -42,12 +44,14 @@
 
 #define size_history_checks 4000
 #define size_history_chars 1000
-#define size_reduce_history_chars 300
+#define size_reduce_history_chars 500
 
 
 /* sizes of internal tables
  * normally you should not change these
  */
+
+#define max_recursion_depth 20000
 
 #define size_checks_mem 200
 

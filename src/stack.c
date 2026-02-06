@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Marco de Beurs
+ * Copyright 2025, 2026 Marco de Beurs
  * 
  * This file is part of m0.
  * 
@@ -395,92 +395,95 @@ int str_to_commands(uint8_t *str, int length)
       i++;
     }
 
-    /* the first char */
-    in = str[i];
-    if(in == '\"')   /* " is start of a string */
+    if(i < length)
     {
-      i++;
-      start_str = i;
-      /* find end of string */
-      while(!((str[i] == '\"') && ((str[i+1] == ' ') || (str[i+1] == '\n'))) && (i < length - 1))
+      /* the first char */
+      in = str[i];
+      if(in == '\"')   /* " is start of a string */
       {
-        // printf("+%c+%i-",str[i], i);
         i++;
-      }
-
-      /* set command */
-      (program_list[end_program_list]).command = 2; /* 2 = push constant string to stack */
-      (program_list[end_program_list]).option = default_st[const_var_stack]->stack_end; /* the option is an index to the place in the var stack */
-
-      /* push found string to constant var stack */
-      push_str(const_var_stack,  &(str[start_str]), i - start_str);
-    }
-    else
-    {
-      if(((in >= '0') && (in <= '9')) || ((in == '-') && (str[i+1] >= '0') && (str[i+1] <= '9'))) /* numbers start with a digit or - */
-      {
-        number = 0LL;
-        
-        if(in == '-')
-        {
-          i++;
-        }
-
-        while((str[i] >= '0') && (str[i] <= '9') && (i < length))
-        {
-          number *= 10;
-          number += str[i] - '0';
-
-          // printf("=%c=%i+",str[i], i);
-          i++;
-        }
-
-        if(in == '-')
-        {
-          number = -number;
-        }
-
-        /* set command */
-        (program_list[end_program_list]).command = 3; /* 3 = push constant number to stack */
-        (program_list[end_program_list]).option = default_st[const_var_stack]->stack_end; /* the option is an index to the place in the var stack */
-
-        /* push number to constant var stack */
-        push_num(const_var_stack,  number);
-
-      }
-      else     /* otherwise it is a command */
-      {
         start_str = i;
-        /* find end of command */
-        while((str[i] != ' ') && (str[i] != '\n') && (i < length))
+        /* find end of string */
+        while(!((str[i] == '\"') && ((str[i+1] == ' ') || (str[i+1] == '\n'))) && (i < length - 1))
         {
-          // printf("!%c!%i+",str[i], i);
+          // printf("+%c+%i-",str[i], i);
           i++;
         }
-        command = find_command(&(str[start_str]), i - start_str);
-        if(command >= 0)
-        {
-          (program_list[end_program_list]).command = command;
-          (program_list[end_program_list]).option = command_list[command].option;
-          // printf(" new command: %i\n", command);
-        }
-        else
-        {
-          /* error in string */
-          fprintf(stderr, "Error line: %i in file: %s line: %i; command: ", line_counter, current_input_file_buffer->filename, local_line_counter);
-          fwrite(&(str[start_str]), 1, i - start_str, stderr);
-          fprintf(stderr, " is not known.\n");
-          exit_code = Exit_user; 
-          /* no exit, need to fix increment */
-          end_program_list--;
-        }
-
+        
+        /* set command */
+        (program_list[end_program_list]).command = 2; /* 2 = push constant string to stack */
+        (program_list[end_program_list]).option = default_st[const_var_stack]->stack_end; /* the option is an index to the place in the var stack */
+        
+        /* push found string to constant var stack */
+        push_str(const_var_stack,  &(str[start_str]), i - start_str);
       }
+      else
+      {
+        if(((in >= '0') && (in <= '9')) || ((in == '-') && (str[i+1] >= '0') && (str[i+1] <= '9'))) /* numbers start with a digit or - */
+        {
+          number = 0LL;
+          
+          if(in == '-')
+          {
+            i++;
+          }
+          
+          while((str[i] >= '0') && (str[i] <= '9') && (i < length))
+          {
+            number *= 10;
+            number += str[i] - '0';
+            
+            // printf("=%c=%i+",str[i], i);
+            i++;
+          }
+          
+          if(in == '-')
+          {
+            number = -number;
+          }
+          
+          /* set command */
+          (program_list[end_program_list]).command = 3; /* 3 = push constant number to stack */
+          (program_list[end_program_list]).option = default_st[const_var_stack]->stack_end; /* the option is an index to the place in the var stack */
+          
+          /* push number to constant var stack */
+          push_num(const_var_stack,  number);
+          
+        }
+        else     /* otherwise it is a command */
+        {
+          start_str = i;
+          /* find end of command */
+          while((str[i] != ' ') && (str[i] != '\n') && (i < length))
+          {
+            // printf("!%c!%i+",str[i], i);
+            i++;
+          }
+          command = find_command(&(str[start_str]), i - start_str);
+          if(command >= 0)
+          {
+            (program_list[end_program_list]).command = command;
+            (program_list[end_program_list]).option = command_list[command].option;
+            // printf(" new command: %i\n", command);
+          }
+          else
+          {
+            /* error in string */
+            fprintf(stderr, "Error line: %i in file: %s line: %i; command: ", line_counter, current_input_file_buffer->filename, local_line_counter);
+            fwrite(&(str[start_str]), 1, i - start_str, stderr);
+            fprintf(stderr, " is not known.\n");
+            exit_code = Exit_user; 
+            /* no exit, need to fix increment */
+            end_program_list--;
+          }
+          
+        }
+      }
+      // printf("current end_program_list: %i\n", end_program_list);
+      i++;
+      end_program_list++;
+      increase_program_list();
     }
-    // printf("current end_program_list: %i\n", end_program_list);
-    i++;
-    end_program_list++;
-    increase_program_list();
   }
 
   if(end_program_list > start)
@@ -1745,7 +1748,7 @@ int st_replace_out_opt(int option, int program_counter, status_pattern *status, 
       (*output)->position = 0;
     }
     
-    *output = putchars_buffer(ret.str_p, ret.length, *output);
+    putchars_buffer(ret.str_p, ret.length, output);
 
     (*output)->position--;
 
@@ -3021,21 +3024,21 @@ void print_program(int program_counter, data_buffer **out)
     {
       case 2:
         /* string */
-        *out = putchar_buffer('\"',*out);
-        *out = putchars_buffer(default_st[const_var_stack]->st[option].value.str, default_st[const_var_stack]->st[option].size, *out);
-        *out = putchar_buffer('\"',*out);
+        putchar_buffer('\"', out);
+        putchars_buffer(default_st[const_var_stack]->st[option].value.str, default_st[const_var_stack]->st[option].size, out);
+        putchar_buffer('\"', out);
         break;
       case 3:
         /* number */    
         number = sdsfromlonglong(default_st[const_var_stack]->st[option].value.num);
-        *out = putchars_buffer(number, sdslen(number), *out);
+        putchars_buffer(number, sdslen(number), out);
         sdsfree(number);
         break;
       default:
-        *out = putchars_buffer((uint8_t *) command_list[command].name.n8, 8, *out);
+        putchars_buffer((uint8_t *) command_list[command].name.n8, 8, out);
     }
     
-    *out = putchar_buffer(' ',*out);
+    putchar_buffer(' ', out);
     
     program_counter ++;
     command = (program_list[program_counter]).command;

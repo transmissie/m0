@@ -47,7 +47,20 @@ Is recursion for macro recognition during processing of the arguments active (@c
 @item 3
 Number (hexadecimal; 0 -- f) defining the pre-size of the macro name.
 @item 4
-Number (hexadecimal) defining the post-size of the macro name.
+Number (hexadecimal) defining the post-size of the macro name or the character "@code{S}".
+
+The "@code{S}" sets the post-size to the length
+of the macro minus the pre-size.
+This can be used to detect the start of a pattern by a macro and include the macro in the argument processing, especially
+by using variable length macros.
+In this case, the macro name in argument 0 is as if the post-size is zero.
+
+A warning:
+@quotation
+Using the "@code{S}" makes the macro have a length of zero when processing the text. This has the consequence that aborting the
+argument processing will lead to an infinite loop of detecting the macro again. This could be overcome by setting a proper virtual character. 
+@end quotation
+
 @item 5
 Optional virtual character. This character is output to the algorithm but not to the output. This can be used if a pre-size is set in macros so that these macros can be recognised after a preceding macro. Mostly for emulation of macros as words surrounded by white space.
 An example of the difference (see the difference at the @code{"rr00"}):
@@ -181,8 +194,8 @@ Output: none.
 
 @deffn builtin defmcall name [called-macro] {[called macro-set]} {mcall-settings} {argument-pattern} {[program]} {[macro-set]} 
 
-Defines a macro that will call a macro (@code{mcall}) in a macro set. The @code{mcall} enables the call to a macro in another macro set
-without first switching to this macro set.
+Defines a macro that will call a macro (@code{mcall}) in a macro set. The @code{mcall} enables the call to a macro (or an @code{mcall})
+in another macro set without first switching to this macro set.
 
 The @code{mcall} is similar to a macro, except that it calls another macro instead of a built in function or a definition.
 It calls the macro with the name in @ovar{called-macro} or when this is empty the macro name in first argument on the stack when the @code{mcall} is invoked.
@@ -202,6 +215,7 @@ expand in the current macro set.
 The @var{name} is the name of the new macro call, must exist and has the same possibilities as a macro name.
 
 The @ovar{called-macro} is the name of the called macro. The definition of the called macro at the time of the @code{mcall} is used.
+The @ovar{called-macro} should be written in a form that would normally be recognized in the processed text.
 If the @ovar{called-macro} is not defined, the first argument on the stack is used as the called macro name.
 If the called macro does not exist an error will result.
 
@@ -212,22 +226,8 @@ For the called macro, its name is on position zero of the stack.
 The called macro is expanded in the @ovar{called macro-set}. If the @ovar{called macro-set} is not defined the current macro set
 is used as the macro set for the called macro. If the called macro set does not exist, it will be initialised.
 
-The @var{mcall-settings} is similar to the @var{macro-settings} in @code{define} and should be set. Otherwise the default (@code{nn00}) will be used. This default is normally not very useful.
-The @var{mcall-settings} is a string of a specific length with characters at a specific position having a specific meaning.
-The positions in the string have the meanings: 
-@table @code
-@item 1
-Is the output of the called macro recursively processed (@code{r}) or not (@code{n} or anything other than @code{r}) by the macro processor.
-The recursive processing can be overridden by the called macro using the instruction @code{recur_y} or @code{recur_n}.
-@item 2
-Is recursion for macro recognition during processing of the arguments active (@code{r}) or not (@code{n} or anything other than @code{r}).  
-@item 3
-Number (hexadecimal; 0 -- f) defining the pre-size of the macro name.
-@item 4
-Number (hexadecimal) defining the post-size of the macro name.
-@item 5
-Optional virtual character. This character is output to the algorithm but not to the output. This can be used if a pre-size is set in macros so that these macros can be recognised after a preceding macro. Mostly for emulation of macros as words surrounded by white space.
-@end table
+The @var{mcall-settings} is the same as the @var{macro-settings} in @code{define} and should be set.
+The recursive processing of the definition can be overridden by the called macro using the instruction @code{recur_y} or @code{recur_n}.
 
 The @ovar{argument-pattern} is the name of the pattern to be used for collecting arguments in the same way as for macros.
 
@@ -644,18 +644,22 @@ Output: the string in @ovar{yes} or in @ovar{no}.
 
 @end deffn
 
-@deffn builtin info name
+@deffn builtin info name [macro-set]
 
-This function outputs the definition string of the macro with @var{name}.
+This function outputs the definition string of the macro with @var{name} or the called macro in case of an @code{mcall}
+with @var{name} defined in the macro set @ovar{macro-set}.
+
+If @ovar{macro-set} is not defined, then the current macro set is used.
+If the macro set named in @ovar{macro-set} does not exist, an error is output.
 
 The other settings of the macro are put in arguments. They can be used for a customized
 output by using a definition.
 The arguments that can be used for this are:
 @table @code
 @item 2
-Definition string.
+Definition string or called macro.
 @item 3
-The builtin function
+The builtin function or macro set of the called macro.
 @item 4
 @var{macro-settings}
 @item 5
@@ -665,10 +669,13 @@ Pattern for argument substitution.
 @item 7
 The optional program.
 @item 8
-Internal number of the macro.
+Macro set of the macro.
+@item 9
+Depending on the type this will be "@code{macro}" if the macro is a macro or "@code{mcall}" if
+the macro is a macro call.
 @end table
 
-Output: definition of @var{name}
+Output: definition or called macro of @var{name}
 @end deffn
 
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Marco de Beurs
+ * Copyright 2025, 2026 Marco de Beurs
  *
  * This file is part of m0.
  *
@@ -21,25 +21,28 @@
 extern int size_div_list,
            end_div_list;
 
+/* var holds the current length of a possible vlm */
+extern int vlm_reserve;
+           
 extern data_buffer *output_buffer;
 
 void init_div_list(void);
 
 void open_diversion(int, int);
 
-data_buffer *putchars_buffer(uint8_t *, int, data_buffer *);
+void putchars_buffer(uint8_t *, int, data_buffer **);
 
-data_buffer *putchar_buffer(uint8_t, data_buffer *);
+void putchar_buffer(uint8_t, data_buffer **);
 
-data_buffer *flush_diversion(int, data_buffer *);
+void flush_diversion(int, data_buffer **);
 
-data_buffer *flush_all_diversions(data_buffer *);
+void flush_all_diversions(data_buffer **);
 
 void write_in_at_last(uint8_t *, int);
 
-void write_output(data_buffer *, int);
+void write_output(data_buffer **, int);
 
-void flush_output(data_buffer *);
+void flush_output(data_buffer **);
 
 void open_trace(char *);
 

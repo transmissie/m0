@@ -2,30 +2,26 @@
 ##
 ## Copyright (C) 2006-2014, 2016-2017, 2020-2025 Free Software
 ## Foundation, Inc.
+## Copyright 2025, 2026 Marco de Beurs
 ##
-## This file is part of GNU M4.
+## This file is part of M0.
 ##
-## GNU M4 is free software: you can redistribute it and/or modify
+## M0 is free software: you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation, either version 3 of the License, or
 ## (at your option) any later version.
 ##
-## GNU M4 is distributed in the hope that it will be useful,
-## but WITHOUT ANY WARRANTY; without even the implied warranty of
-## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-## GNU General Public License for more details.
-##
 ## You should have received a copy of the GNU General Public License
 ## along with this program.  If not, see <https://www.gnu.org/licenses/>.
 ##
-## This file written by Eric Blake <ebb9@byu.net>
+## This file is copied from M4 Makefile.am, which is written by Eric Blake <ebb9@byu.net>
 
 AM_DISTCHECK_DVI_TARGET = pdf
-# EXTRA_DIST = m0.pdf
 
 info_TEXINFOS = m0.texi m0algo.texi
 m0_TEXINFOS = fdl-1.3.texi gpl-3.0.texi sds.texi chap_builtin.texi chap_programs.texi m4emu.texi
 m0algo_TEXINFOS = fdl-1.3.texi gpl-3.0.texi
+AM_MAKEINFOHTMLFLAGS = --set-customization-variable SPLIT=chapter
 
 m4emu.texi: $(builddir)/../emu/m4emu.texi
 	cp $(builddir)/../emu/m4emu.texi .

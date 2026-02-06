@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Marco de Beurs
+ * Copyright 2025, 2026 Marco de Beurs
  *
  * This file is part of m0.
  *
@@ -32,6 +32,12 @@
 #include "xmalloc.h"
 
 
+/* diversion struct
+ * 
+ * divnum > 0 are normal diversions
+ * divnum == 0 is at last buffer
+ * divnum == -1 empty diversion buffer
+ */
 
 typedef struct
 {
@@ -52,6 +58,8 @@ int size_div_list,
 int trace_file;
 data_buffer *output_buffer;
 
+/* var holds the current length of a possible vlm */
+int vlm_reserve = 0;
 
 
 void init_div_list(void)
@@ -179,60 +187,73 @@ void open_diversion(int divnum, int from)
 }
 
 
-data_buffer *putchars_buffer(uint8_t *in, int len, data_buffer *out)
+void putchars_buffer(uint8_t *in, int len, data_buffer **out)
 {
-  int j;
+  int j,
+      max_reserve;
 
   for(j = 0; j < len; j++)
   {
-    out->data[out->position] = *in;
-    out->position++;
+    (*out)->data[(*out)->position] = *in;
+    (*out)->position++;
     in++;
 
-    if(out->position >= out->size)
+    if((*out)->position >= (*out)->size)
     {
-      if(out->file >= 0)
+      if((*out)->file >= 0)
       {
         /* output to real file or stdout */
+        max_reserve = max_size_macro;
+        if(vlm_reserve > max_reserve)
+        {
+          max_reserve = vlm_reserve;
+        }
+
         write_output(out, max_size_macro);
       }
       else
       {
         /* output is a memory buffer that needs to grow */
-        out = incr_buffer(out, add_size_processbuf);
+        *out = incr_buffer(*out, add_size_processbuf);
       }
     }
   }
 
-  return(out);
 }
 
 
-data_buffer *putchar_buffer(uint8_t in, data_buffer *out)
+void putchar_buffer(uint8_t in, data_buffer **out)
 {
-  out->data[out->position] = in;
-  out->position++;
+  int max_reserve;
+
+  (*out)->data[(*out)->position] = in;
+  (*out)->position++;
   
-  if(out->position >= out->size)
+  if((*out)->position >= (*out)->size)
   {
-    if(out->file >= 0)
+    if((*out)->file >= 0)
     {
       /* output to real file or stdout */
+      max_reserve = max_size_macro;
+      if(vlm_reserve > max_reserve)
+      {
+        max_reserve = vlm_reserve;
+      }
+
       write_output(out, max_size_macro);
     }
     else
     {
       /* output is a memory buffer that needs to grow */
-      out = incr_buffer(out, add_size_processbuf);
+      *out = incr_buffer(*out, add_size_processbuf);
     }
   }
   
-  return(out);
 }
 
 
 
-data_buffer *flush_diversion(int divnum, data_buffer *out)
+void flush_diversion(int divnum, data_buffer **out)
 {
   int i;
 
@@ -240,7 +261,7 @@ data_buffer *flush_diversion(int divnum, data_buffer *out)
   {
     if((*div_data)[i].divnum == divnum)
     {
-      out = putchars_buffer((*div_data)[i].data, (*div_data)[i].length, out);
+      putchars_buffer((*div_data)[i].data, (*div_data)[i].length, out);
       (*div_data)[i].divnum = -1;
       if(debug)
       {
@@ -249,7 +270,7 @@ data_buffer *flush_diversion(int divnum, data_buffer *out)
     }
   }
 
-  return(out);
+
 }
 
 
@@ -290,7 +311,7 @@ int find_smallest_div(void)
 }
 
 
-data_buffer *flush_all_diversions(data_buffer *out)
+void flush_all_diversions(data_buffer **out)
 {
   int divnum;
 
@@ -302,11 +323,9 @@ data_buffer *flush_all_diversions(data_buffer *out)
 
     if(divnum > 0)
     {
-      out = flush_diversion(divnum, out);
+      flush_diversion(divnum, out);
     }
   }
-
-  return(out);
 }
 
 
@@ -377,7 +396,9 @@ void write_diversion(uint8_t *buf, int len, int divnum)
 
 void write_in_at_last(uint8_t *in, int len)
 {
- 
+
+  /* at last division is number 0 */
+  
   if(at_last_div_list < 0)
   {
     open_diversion(0, 0);
@@ -387,60 +408,67 @@ void write_in_at_last(uint8_t *in, int len)
   
 }
   
-void write_output(data_buffer *buf, int reserve)
+void write_output(data_buffer **buf, int reserve)
 {
   int written_bytes,
       bytes_to_write;
   int i, j;
 
-  if(buf->position > reserve)
+  if((reserve + output_buffer_size_reserve) > (*buf)->size)
+  {
+    /* need to increase the buffer to hold all data */
+    *buf = incr_buffer(*buf, (reserve + output_buffer_size_reserve));
+  }
+
+  
+  if((*buf)->position > reserve)
   {
     /* normally this function is called when the position is at the end of the buffer
      * here the amount to be written is calculated */
 
-    bytes_to_write = buf->position - reserve;
+    bytes_to_write = (*buf)->position - reserve;
 
     /* depending on diversion different actions are taken
      * if diversion num < 0 then no action and thus data is
      * not written and thereby lost
      */
-    if(buf->divnum == 0)
+    if((*buf)->divnum == 0)
     {
-      written_bytes = write(buf->file, buf->data, bytes_to_write);
+      written_bytes = write((*buf)->file, (*buf)->data, bytes_to_write);
 
       if(debug)
       {
-        printf("\n ----- written number of bytes: %i to %s -----\n",written_bytes, buf->filename);
+        printf("\n ----- written number of bytes: %i to %s -----\n",written_bytes, (*buf)->filename);
       }
       
       if (written_bytes != bytes_to_write)
       {
-        fprintf(stderr, "Error writing output file: %s: %s.\n", buf->filename, strerror(errno));
+        fprintf(stderr, "Error writing output file: %s: %s.\n", (*buf)->filename, strerror(errno));
         exit(Exit_io);
       }
     }
 
-    if(buf->divnum > 0)
+    if((*buf)->divnum > 0)
     {
-      write_diversion(buf->data, bytes_to_write, buf->divnum);
+      write_diversion((*buf)->data, bytes_to_write, (*buf)->divnum);
     }
 
     /* copy remaining bytes to the beginning of the buffer */
     j = 0;
-    for(i = bytes_to_write; i < buf->size; i++)
+    for(i = bytes_to_write; i < (*buf)->size; i++)
     {
-      buf->data[j] = buf->data[i];
+      (*buf)->data[j] = (*buf)->data[i];
       j++;
     }
 
-    buf->position = reserve;
+    (*buf)->position = reserve;
   }
 }
 
-void flush_output(data_buffer *output)
+void flush_output(data_buffer **output)
 {
   
-  if(output->file >= 0)
+  if((*output)->file >= 0)
   {
     /* output to real file or stdout */
     write_output(output, 0);
