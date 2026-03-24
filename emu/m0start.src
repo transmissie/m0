@@ -52,7 +52,7 @@ It is thus not possible to select arguments from other stacks than the first sta
 END
 CODE
 0_chars_pattern:[]-\@+*?~
-0_chars_args:$*@#;1;2;3
+0_chars_args:1$*@#;1;2;3
 0_set_var:1;+-+
 0_set_var:2;-+-
 END

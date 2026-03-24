@@ -1,0 +1,243 @@
+COMMENT
+
+Copyright 2025, 2026 Marco de Beurs
+ 
+This file is part of m0.
+
+m0 is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License,
+or (at your option) any later version.
+
+m0 is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with m0. If not, see <https://www.gnu.org/licenses/>.
+
+END
+HEADIF:At the start;all
+TEXT
+
+At the start the macros used to define the macros for @code{gpm} are defined.
+This is all straightforward linking of macro names to builtin functions.
+
+END
+CODE
+0_define:0_pattern:;;pattern;nr01;0
+0_define:0_set_var:;;set_var;nr01;0
+0_define:0_get_var:;;get_var;nr01;0
+0_define:0_chars_pattern:;;charpat;nr01;0
+0_define:0_chars_args:;;chararg;nr01;0
+0_define:0_specialchar:;;specialc;nr01;0
+0_define:0_def_mcall:;;defmcall;nr01;0
+0_define:0_atlast:;;at_last;nr01;0
+0_define:0_mset:;;macroset;nr01;0
+0_define:0_char:;;num2chr;nr01;0
+0_define:0_program:;;program;nr01;0
+END
+IF:all
+TEXT
+
+Setting the defaults. These are different from the defaults of @code{m0}.
+The second line defines the special characters for the arguments. This is missing the fifth character.
+It is thus not possible to select arguments from other stacks than the first stack.
+
+END
+CODE
+0_chars_pattern:{}-\@+*?~
+0_chars_args:1%*@#;101;102;103;gpmexec
+0_chars_args:1%*@#;101;102;103;gpmdef
+0_chars_args:1$*@#$;111;112;103
+END
+HEADIF:Quoting in default macro set;all
+TEXT
+
+In the next part a macro with a pattern is used to have quoting in the macros in the
+default macro set @code{0} operational.
+The quoting is thus not a builtin function in @code{m0}. 
+
+END
+CODE
+0_set_var:111;+-+
+0_set_var:112;-+-
+0_pattern:0string;{@00-@ff}~;stack_b 1 stack_a begin-1
+0_pattern:0string;+-+;stack_b 1 +
+0_pattern:0string;-+-;stack_b 1 - dup =0 if stack_a end stop endif
+0_define:+-+;$1;;nn00 ;0string
+END
+HEADIF:Quoting;all
+TEXT
+
+In the next part a macro with a pattern is used to have quoting in @code{gpm} in
+a similar way as @code{m6}.
+
+END
+CODE
+0_set_var:101;<
+0_set_var:102;>
+0_set_var:103;:
+0_pattern:string;{@00-@ff}~;stack_b 1 stack_a begin-1
+0_pattern:string;<;stack_b 1 +
+0_pattern:string;>;stack_b 1 - dup =0 if stack_a end stop endif
+0_define:<;%1;;nn00 ;string;;;gpmexec
+END
+HEADIF:Collecting arguments of macros;all
+TEXT
+
+The collecting of arguments in @code{gpm} macros is executed with a pattern named @code{gpm} 
+containing small programs.
+
+This pattern will also recognise the arithmetic for the
+@code{BAR} macro. It will push the operators to the
+operator stack. The @code{BAR} macro can execute these
+operators.
+
+
+END
+CODE
+0_pattern:gpm;{@00-@ff}~;stack_a begin-1 
+0_pattern:gpm;:;stack_a end begin  
+0_pattern:gpm;];stack_a end stop
+0_pattern:gpm;:+:;stack_a 0 oppush +
+0_pattern:gpm;:-:;stack_a 0 oppush -
+0_pattern:gpm;:*:;stack_a 0 oppush *
+0_pattern:gpm;:/:;stack_a 0 oppush /
+END
+HEADIF:Substitution of arguments;all
+TEXT
+
+The emulation is not using the default argument substitution,
+because the local defined macros should be deleted at the end
+of a macro. The argument substitution is executed at the end
+of a macro and is therefore the correct place to delete
+local macros.
+
+Stack @code{h} holds the names of macros defined. This stack is not
+freed at the end of a @code{DEF}.
+
+A char with value 0 is used in macros to execute the deletion of
+the macros whereby the name of the macros are stored on stack @code{h}.
+
+A char with value 3 is used in the @code{DEF} macro to execute the deletion of
+macros and to store the defined macro on stack @code{h}.
+
+A char with value 2 is used in the @code{VAL} macro to output
+the second argument and delete the last char (the char with value 0).
+
+END
+CODE
+0_define:0_zero;0_char:0
+;;nn00;;;;0
+0_define:0_three;0_char:3
+;;nn00;;;;0
+0_define:0_two;0_char:2
+;;nn00;;;;0
+0_pattern:arggpm;%{0-9};stack_b getlast1 getarg putout 
+0_pattern:arggpm;0_zero;+-+ stack_a pop_to_2 "gpmdef"
+stack_h while_st putarg1 "pop" fun_call pop endwhile
+"" putout -+-
+0_pattern:arggpm;0_three;+-+ stack_a pop_to_2 copyto_c "gpmdef"
+stack_h while_st putarg1 "pop" fun_call pop endwhile
+copyfr_c free_no "" putout -+-
+0_pattern:arggpm;0_two;stack_b getarg2 putout "" putout
+END
+HEADIF:Main macro for executing all macros;all
+TEXT
+
+The main macro will collect all arguments including the macro name
+and will make an @code{mcall} to the macro.
+
+This is therefore a relatively simple macro.
+END
+CODE
+0_def_mcall:[;;gpmdef;rr00;gpm;;gpmexec
+END
+HEADIF:DEF;all
+TEXT
+
+The macros will be defined in the @code{gpmdef} macro set.
+
+They will be called from the main macro. Therefore the argument
+collection has no significance.
+
+
+A program to set all the options for the @code{define} or
+@code{push} function is defined to be used by the @code{DEF} and
+the @code{UPDATE} macro. The definition of a new macro is
+appended with a zero character to activate the deletion of
+macros at the end of a macro by the @code{arggpm} argument substitution.
+
+END
+CODE
+0_program:defargs;+-+ 
+stack_a pop_to_3 "" "nn00" "gpm" "arggpm" "" "gpmdef"
+stack_c getarg2 -+-"0_zero"+-+ cat putarg2-+-
+END
+TEXT
+The @code{DEF} uses the @code{push} function so that
+it can also be popped at the end of macros.
+END
+CODE
+0_define:DEF;0_three;push;nn00;gpm;arggpm; @defargs ;gpmdef
+END
+HEADIF:UPDATE;all
+TEXT
+
+Is similar to @code{DEF}, but uses a @code{define} instead of
+a @code{push}.
+
+END
+CODE
+0_define:UPDATE;0_zero;define;nn00;gpm;arggpm; @defargs ;gpmdef
+END
+HEADIF:BIN;all
+TEXT
+
+This macro has nothing to do. In @code{m0} integers and strings are 
+automatically converted.
+
+END
+CODE
+0_define:BIN;%10_zero;;nn00;gpm;arggpm;;gpmdef
+END
+HEADIF:DEC;all
+TEXT
+
+Similar to @code{BIN}.
+
+END
+CODE
+0_define:DEC;%10_zero;;nn00;gpm;arggpm;;gpmdef
+END
+HEADIF:VAL;all
+TEXT
+
+Links to @code{info}, but needs to also output char with
+0 to the output.
+
+END
+CODE
+0_define:VAL;0_two0_zero;info;nn00;gpm;arggpm;recur_n;gpmdef
+END
+HEADIF:BAR;all
+TEXT
+
+The operators are already stored by the @code{gpm} pattern.
+So operator needs only to be executed here.
+
+END
+CODE
+0_define:BAR;%20_zero;;nn00;gpm;arggpm;stack_a opexall;gpmdef
+END
+HEADIF:end of emulation file, start of gpm files;all
+TEXT
+
+Finally switch to the @code{gpmexec} macro set.
+
+END
+CODE
+0_mset:gpmexec
+END

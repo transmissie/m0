@@ -141,129 +141,6 @@ status_bitap   *first_status_bitap = NULL,
 argument_chars *current_arg_chars;
 
 
-/* memory for bitap checks */
-typedef struct check_mem
-{
-  uint64_t checks[size_checks_mem];
-  struct check_mem *next,
-                   *prev;
-  int start_num;
-} check_mem;
-
-check_mem *check_mem_start = NULL,
-          *check_mem_last = NULL,
-          *check_mem_current = NULL;
-int check_mem_end = 0,
-    check_mem_size = 0;
-
-// uint64_t (*current_check)[];
-
-
-uint64_t (*new_checks(int num))[]
-{
-  check_mem *prev;
-  uint64_t (*ret)[];
-  int start,
-      i;
-
-  // printf("add check memory request: %i now: %i\n", num, check_mem_end);
-  
-  if(num >= size_checks_mem)
-  {
-    fprintf(stderr, "internal error, request: %i for checks memory is larger than available.\n", num);
-    exit(Exit_internal);
-  }
-  
-  if((check_mem_end + num) >= check_mem_size)
-  {
-    /* need more memory */
-    if(check_mem_start == NULL)
-    {
-      // fprintf(stderr,"initial check memory request.\n");
-      // printf("initial check memory request.\n");
-      check_mem_start = xmalloc(sizeof(check_mem));
-      check_mem_last = check_mem_start;
-      check_mem_last->prev = NULL;
-      check_mem_size = size_checks_mem;
-      check_mem_last->start_num = 0;
-    }
-    else
-    {
-      // fprintf(stderr,"additional check memory request: %lli\n",sizeof(check_mem));
-      // printf("additional check memory request.\n");
-      check_mem_last->next = xmalloc(sizeof(check_mem));
-
-      // fprintf(stderr,"add check memory request p %p\n",check_mem_last->next);
-      
-      start = check_mem_last->start_num;
-      prev = check_mem_last;
-      
-      check_mem_last = check_mem_last->next;
-      
-      check_mem_last->prev = prev;
-      check_mem_last->start_num = start + size_checks_mem;
-      // fprintf(stderr, "start %i, startnum %i\n", start, check_mem_last->start_num);
-      check_mem_size += size_checks_mem;
-    }
-    check_mem_last->next = NULL;
-    check_mem_end = check_mem_last->start_num;
-    check_mem_current = check_mem_last;
-  }
-
-  // fprintf(stderr,">>   current  p %p %p,  num %i, end %i, startnum %i, tot %i.\n",check_mem_current, check_mem_current->next, num, check_mem_end, check_mem_current->start_num, (check_mem_current->start_num + size_checks_mem));
-
-  /* if over current end go to next mem block */
-  if((check_mem_end + num) >= (check_mem_current->start_num + size_checks_mem))
-  {
-    // fprintf(stderr,"     current  p %p %p,  num %i, end %i, size %i.\n",check_mem_current, check_mem_current->next, num, check_mem_end, check_mem_current->start_num, check_mem_current->start_num);
-    check_mem_current = check_mem_current->next;
-    check_mem_end = check_mem_current->start_num;
-  }
-    
-  /* use the current mem block */
-  ret = (uint64_t (*)[]) &(check_mem_current->checks[check_mem_end - check_mem_current->start_num]);
-
-  /* clear memory */
-  for(i = (check_mem_end - check_mem_current->start_num); i < (check_mem_end - check_mem_current->start_num + num); i++)
-  {
-    // fprintf(stderr, " mem_end %i, start %i, clearing : %i\n",check_mem_end, check_mem_current->start_num, i);
-    check_mem_current->checks[i] = 0ll;
-  }
-
-  // fprintf(stderr,"additional check memory request fini p %p, s %p,  num %i, end %i, size %i.\n",ret,check_mem_last, num, check_mem_end, check_mem_size);
-
-  check_mem_end += num;
-  
-  return(ret);  
-}
-
-
-void free_checks(int end)
-{
-
-  // printf("free check memory request: %i now: %i\n", end, check_mem_end);
-  // fprintf(stderr,"free check memory request: %i now: %i\n", end, check_mem_end);
-  
-  if((end < 0) || (end > check_mem_end))
-  {
-    fprintf(stderr, "internal error, request: %i freeing checks memory is not correct.\n", end);
-    exit(Exit_internal);
-  }
-  
-  while(end < check_mem_current->start_num)
-  {
-    // fprintf(stderr," prev current free check memory end %i startnum: %i\n", end, check_mem_current->start_num );
-    check_mem_current = check_mem_current->prev;
-  }
-
-  // fprintf(stderr,"  free check a %i startnum: %i\n", end, check_mem_current->start_num );
-  
-  check_mem_end = end;
-
-  // fprintf(stderr,"  free check b %i startnum: %i\n", check_mem_end, check_mem_current->start_num );
-
-  
-}
   
   
 argument_chars *init_arg_chars(uint8_t first, uint8_t all, uint8_t allq, uint8_t num, uint8_t firstalt)
@@ -351,6 +228,7 @@ status_bitap *new_vectorset(uint8_t *setname, int length)
   new_status_bitap->word15 = init_wordlist(15);
   new_status_bitap->patlist = NULL; /* initially not used */
   new_status_bitap->argchars = init_arg_chars('$', '*', '@', '#', '$');
+  new_status_bitap->num_digits = 1;
   new_status_bitap->quote_var_start = 1;
   new_status_bitap->quote_var_end = 2;
   new_status_bitap->quote_var_separator = 3;
@@ -380,6 +258,7 @@ status_bitap *new_vectorset(uint8_t *setname, int length)
   
   return(new_status_bitap);
 }
+
 
 status_bitap *find_vectorset(uint8_t *setname, int length)
 {
@@ -508,13 +387,9 @@ void resize_pattern(pattern_data (*pat_dat), int add)
   
   newsize = pat_dat->vec_size + add;
   
- // fprintf(stderr, "1 vec : %p, masks: %p\n", pat_dat->vec,pat_dat->masks);
-  
   pat_dat->vec = xrealloc(pat_dat->vec, newsize * sizeof((*vec)[0]));
   
   pat_dat->masks = xrealloc(pat_dat->masks, newsize * sizeof(pattern_masks));
-
-  // fprintf(stderr, "2 vec : %p, masks: %p\n", pat_dat->vec,pat_dat->masks);
 
   oldsize = pat_dat->vec_size;
   
@@ -541,7 +416,7 @@ void copy_patternvector(pattern_data (*vec_from), pattern_data (*vec_to))
     vec_to->vec_size = vec_from->vec_size;
   }
   /* and copy data */
-  memcpy(vec_to->masks, vec_from->masks, vec_to->vec_size * sizeof(pattern_data));
+  memcpy(vec_to->masks, vec_from->masks, vec_to->vec_size * sizeof(pattern_masks));
   
   memcpy(vec_to->vec, vec_from->vec, vec_to->vec_size * sizeof((*vec)[0]));
   

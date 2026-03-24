@@ -15,7 +15,7 @@ In the description below the arguments with square hooks ([...]) indicate option
 This is probably the most complex macro to start with, but since it is the first macro to be used it is best to understand first.
 
 
-@deffn builtin define name [definition] {[builtin function]} {macro-settings} {[argument-pattern]} {[substitute-pattern]} {[program]} {[macro-set]}
+@deffn builtin define name [definition] {[builtin function]} {macro-settings} {[argument-pattern]} {[substitute-pattern]} {[program-instructions]} {[macro-set]}
 
 This function defines a new macro. The @code{0_define} macro can be used for this at startup. For an overview how the options for the different parts function @pxref{The complete working of macros}.
 
@@ -112,7 +112,7 @@ The @ovar{argument-pattern} is the name of the pattern to be used for collecting
 
 The @ovar{substitute-pattern} is the name of the pattern to be used for substitution of special characters with the arguments in the definition. If this option is not used the default argument substitution is used. If this option exists but the definition string is empty, then the first argument is used in place of the definition. This can be used for macros such as the @code{format} macro of @code{m4}.
 
-The @ovar{program} is a program that is executed just after the arguments are collected and before the builtin macro is executed or argument substitution. This can be used to set arguments to fixed values.
+The @ovar{program-instructions} is a program that is executed just after the arguments are collected and before the builtin macro is executed or argument substitution. This can be used to set arguments to fixed values.
 
 The optional @ovar{macro-set} is the name of a set of macros that will be used to define the macro in. If this option is not set, the macro is defined in the current active set of macros. The default macro set name at start is @code{0}.
 If the macro set does not yet exist, it will be initialised.
@@ -140,9 +140,9 @@ Output: none.
 
 
 
-@deffn builtin push name [definition] {[builtin function]} {macro-settings} {[argument-pattern]} {[substitute-pattern]} {[program]} {[macro-set]}
+@deffn builtin push name [definition] {[builtin function]} {macro-settings} {[argument-pattern]} {[substitute-pattern]} {[program-instructions]} {[macro-set]}
 
-Similar to define, but saves the previous definition. The previous definition can be retrieved with @code{pop}.
+Similar to @code{define}, but saves the previous definition. The previous definition can be retrieved with @code{pop}.
 It redefines the user macro @var{name} using the same arguments as used in @code{define}.
 
 Output: none.
@@ -173,6 +173,42 @@ Output: none.
 @end deffn
 
 
+@deffn builtin copy {from-name} {to-name} [{from macro-set}] [{to macro-set}]
+Copies the macro or @code{mcall} with @var{from-name} to the macro with @var{to-name}.
+
+If the @ovar{from macro-set} is used then the macro is retrieved from this macro set.
+If the @ovar{to macro-set} is used then the macro is copied to this macro set.
+If the @ovar{from macro-set} or the @ovar{to macro-set} is not defined, then the current macro set is used.
+
+If the macro set named in @ovar{from macro-set} or @ovar{to macro-set} does not exist, an error is output.
+
+Output: none.
+@end deffn
+
+
+@deffn builtin pushcopy {from-name} {to-name} [{from macro-set}] [{to macro-set}]
+Similar to @code{copy}, but saves the previous definition of the @var{to-name} macro.
+The previous definition can be retrieved with @code{pop}.
+
+Output: none.
+@end deffn
+
+@deffn builtin set_info name info [macro-set]
+With this function a special information text can be set in a macro.
+This information text can be retrieved with the function @code{info} by outputting the ninth
+argument.
+
+The @var{name} is the name of the macro for which to set the information text.
+
+The @var{info} is the information text.
+
+If the @ovar{macro-set} is used then the macro from this macro set is used.
+If @ovar{macro-set} is not defined, then the current macro set is used.
+If the macro set named in @ovar{macro-set} does not exist, an error is output.
+
+Output: none.
+@end deffn
+
 
 @node Macro sets
 @section Macro sets
@@ -192,7 +228,7 @@ Only macros available in the new macro set can be used after switching. The func
 Output: none.
 @end deffn
 
-@deffn builtin defmcall name [called-macro] {[called macro-set]} {mcall-settings} {argument-pattern} {[program]} {[macro-set]} 
+@deffn builtin defmcall name [called-macro] {[called macro-set]} {mcall-settings} {argument-pattern} {[program-instructions]} {[macro-set]} 
 
 Defines a macro that will call a macro (@code{mcall}) in a macro set. The @code{mcall} enables the call to a macro (or an @code{mcall})
 in another macro set without first switching to this macro set.
@@ -231,7 +267,7 @@ The recursive processing of the definition can be overridden by the called macro
 
 The @ovar{argument-pattern} is the name of the pattern to be used for collecting arguments in the same way as for macros.
 
-The @ovar{program} is a program that is executed just after the arguments are collected in the same way as for macros.
+The @ovar{program-instructions} is a program that is executed just after the arguments are collected in the same way as for macros.
 
 The optional @ovar{macro-set} is the name of a set of macros that will be used to define the macro call in. If this option is not set, the macro call is defined in the current active set of macros.
 If the macro set does not yet exist, it will be initialised.
@@ -331,7 +367,7 @@ out: | | | | |m|a|c|r|o| |o|u|t|p|u|t| | | | | | | | | | |
 @end deffn
 
 
-@deffn builtin pshmcall name [called-macro] {[called macro-set]} {mcall-settings} {argument-pattern} {[program]} {[macro-set]} 
+@deffn builtin pshmcall name [called-macro] {[called macro-set]} {mcall-settings} {argument-pattern} {[program-instructions]} {[macro-set]} 
 Push macro call is similar to @code{defmcall}, but saves the previous definition. The previous definition can be retrieved with @code{pop}.
 It redefines the macro call @var{name} using the same arguments as used in @code{defmcall}.
 
@@ -344,7 +380,7 @@ Output: none.
 @node Functions for defining patterns
 @section Functions for defining patterns
 
-@deffn builtin pattern name pattern-part program [priority]
+@deffn builtin pattern name pattern-part program-instructions [priority]
 This functions adds @var{pattern-part} to a pattern named @var{name}.
 A pattern with @var{name} is automatically initialised when not already used before. 
 
@@ -378,7 +414,7 @@ Output: none.
 @end deffn
 
 
-@deffn builtin append_p name pattern-part program [priority]
+@deffn builtin append_p name pattern-part program-instructions [priority]
 This function appends @var{pattern-part} to the previous pattern part in the pattern named @var{name}.
 It has the same arguments as @code{pattern}.
 
@@ -401,6 +437,18 @@ Output: none.
 Copies an existing pattern named @var{from} to @var{to}.
 
 This can be used to reuse a pattern and extend it further in a new pattern.
+
+Output: none.
+@end deffn
+
+
+@deffn builtin program name program-instructions
+Defines a program that can be called from other programs.
+
+The @var{name} should have a maximum of 8 characters. This is the name that is used to call
+this program using @code{@@}@var{name}. The program should already be defined before the call instruction
+can be used, because the instructions are converted into internal codes when a program is defined. If the
+program is not yet known, then it is not possible to convert the call to an internal code.
 
 Output: none.
 @end deffn
@@ -463,19 +511,25 @@ Output: none.
 This function is used to define the characters for the argument substitution when using the the default
 argument substitution. Only a single character can be selected. This is similar to @code{m4}.
 
-The @var{argument-settings} is a string of a specific length (4 or 5 characters) with characters at a specific position having a specific meaning.
+The @var{argument-settings} is a string of a specific length (5 or 6 characters) with characters at a specific position having a specific meaning.
 The positions in the string have the meanings: 
 
 @table @code
 @item 1
-Is the character used for arguments in the definition. This is @code{$} by default. The number after this character in the definition is the entry of the stack.
+This is a hexadecimal number for the amount of digits after an argument character. A number from 1 -- 5 indicates 
+the maximum number of digits is 1 -- 5 with a minimum of 1 digit. 
+A number from a -- d sets the number of digits to exactly 2 -- 5.
+The remaining numbers 0, 6 -- 9, e and f are reserved.
+
 @item 2
-Is the character used to output all arguments. This character is put after the first character in a definition. This is @code{*} by default.
+Is the character used for arguments in the definition. This is @code{$} by default. The number after this character in the definition is the entry of the stack.
 @item 3
-Is the character used to output all arguments with quotes. This character is put after the first character in a definition. This is @code{@@} by default.
+Is the character used to output all arguments. This character is put after the first character in a definition. This is @code{*} by default.
 @item 4
-Is the character used to output the number of arguments. This character is put after the first character in a definition. This is @code{#} by default.
+Is the character used to output all arguments with quotes. This character is put after the first character in a definition. This is @code{@@} by default.
 @item 5
+Is the character used to output the number of arguments. This character is put after the first character in a definition. This is @code{#} by default.
+@item 6
 Is the optional character used for arguments from the other stacks in the definition. This is @code{$} by default. 
 An @code{a} -- @code{f} after this character in the definition selects the stack. The number after this is the entry of the stack. 
 If this is not set, the arguments from the other stacks can not be selected. 
@@ -495,7 +549,7 @@ The default is defined as:
 @verbatim
 0_define:0_chars_args:;;chararg;nr01;0
 
-0_chars_args:$*@#$;1;2;3
+0_chars_args:1$*@#$;1;2;3
 @end verbatim
 @end example
 
@@ -538,12 +592,15 @@ Also a range of characters can be given, e.g.: @code{a-z} or @code{z-a}.
 Output: translated string
 @end deffn
 
-@deffn builtin num2chr number
-This function returns the character with the ASCII @var{number}.
+@deffn builtin num2chr number [number] ... [number]
+This function returns the character with the ASCII of @var{number}.
 The number is therefore at least 0 and maximum 255. If the number is
-outside of this range nothing is output.
+outside of this range a space is output.
 
-Output: single character
+Multiple @ovar{number} can be used and result in a string with the ASCII characters
+of the numbers.
+
+Output: single character or string of characters
 @end deffn
 
 @deffn builtin num2str number [radix] [width]
@@ -582,11 +639,11 @@ Output: string of @var{number}
 
 A set of variables to store strings is available. 
 They can be used to store information without using macros.
-They are also used to give information to the standard arguments fill in function
-for the characters or strings to use in the output of multiple arguments.
+They are also used to store the characters or strings of multiple arguments and quoting
+for the default argument substitution function.
 
 These variables are referenced by a number from 1 to 255.
-Negative numbers are used to certain get system or process information. 
+Negative numbers are used to get certain system or process information. 
 
 
 @deffn builtin set_var number string
@@ -619,6 +676,8 @@ Gets the program name.
 @item -7
 Gets a string with all the options after the @code{--} on the command line.
 @item -8
+Reserved.
+@item -9
 Gets the return value from the last command executed by the function @code{shell}.
 @end table
 
@@ -671,7 +730,9 @@ The optional program.
 @item 8
 Macro set of the macro.
 @item 9
-Depending on the type this will be "@code{macro}" if the macro is a macro or "@code{mcall}" if
+This will output the information text of the macro (see also the function @code{set-info}).
+Or if the information text is not set, 
+depending on the type of macro this will be "@code{macro}" if the macro is a macro or "@code{mcall}" if
 the macro is a macro call.
 @end table
 

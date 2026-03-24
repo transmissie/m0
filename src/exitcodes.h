@@ -26,3 +26,6 @@
 
 extern int exit_code;
            
+extern int warning_level;
+
+void print_warning(int exitcode, char *format, ...);

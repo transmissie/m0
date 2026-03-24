@@ -45,7 +45,7 @@ This manual (@value{UPDATED}) is for M0 (version
 @value{VERSION}), a package containing an implementation of the @code{m0} macro
 processor.
 
-Copyright @copyright{} 2025 Marco de Beurs
+Copyright @copyright{} 2025, 2026 Marco de Beurs
 
 
 @quotation
@@ -130,8 +130,10 @@ to provide flexibility of macros and are explained in @ref{Patterns}.
 The functions available for macros are listed in @ref{Builtin functions}, the instructions
 available for patterns are listed in @ref{Programs for patterns and macros}.
 
-The @code{m4} emulation example in @ref{M4 emulation example} demonstrates the use
-of @code{m0} to emulate an existing macro processor.
+Emulation examples found in @ref{Emulation examples} demonstrate the use
+of @code{m0} to emulate existing macro processors.
+The @code{m4} emulation is demonstrated in @ref{M4 emulation example}, the @code{m6} emulation in @ref{M6 emulation example} and 
+the @code{gpm} emulation in @ref{GPM emulation example}.
 
 @section Why another macro processor?
 
@@ -193,6 +195,19 @@ This enters @var{name} into the macro name table.  If @samp{=@var{value}} is
 missing, the value is taken to be the empty string.  The @var{value} can
 be any string, but the macro can not be defined to take arguments.
 The order with respect to file names is not significant in contrast to some other macro processors.
+
+@item -E
+@itemx --fatal-warnings
+Controls the effect of warnings.
+
+By default no warnings are printed and execution continues when errors are detected.
+
+If specified:
+@itemize
+@item Once; warnings are printed, exit codes are not set and execution continues.
+@item Twice; warnings are printed, exit codes are set, but execution continues.
+@item Three times; warnings are printed, exit codes are set, execution stops.
+@end itemize
 
 @item -o @var{file}
 @itemx --output=@var{file}
@@ -311,7 +326,8 @@ Internally @code{m0} has two types of macros:
 @end itemize
 
 Although the user does not have to handle these different types differently when defining a macro, they have different
-possibilities that should be known.
+possibilities that should be known. Further the use of a vlm reduces the performance because the vlm uses another additional
+algorithm next to the normal macros.
 
 @subsection Normal macros
 
@@ -360,7 +376,7 @@ The @code{[Nn]*} means zero or more characters being a capital or small n.
 
 The variable length macro can be used for recognising patterns or regular expressions. In the current implementation the variable part
 is limited to a single character or set of characters, although it is possible to have multiple variable parts. The possibilities are
-equal to the pattern parts explained later. 
+equal to the pattern parts explained later, except that a one time trigger is not supported. 
 
 @node Macros with arguments
 @section Macros with arguments
@@ -998,24 +1014,32 @@ However for more complex patterns the priority still plays a role.
 @include chap_programs.texi
 
 
-@node M4 emulation example
-@chapter M4 emulation example
+@node Emulation examples
+@chapter Emulation examples
 
 @section Introduction
 
-The @code{m4} emulation is an example of defining a macro language in @code{m0}.
+The emulation examples are examples of defining a macro language in @code{m0}.
 It shows the different possibilities and solutions possible with @code{m0}.
 
-It is (at least now) not a goal to be 100% compatible with @code{m4} or to be complete.
+@node M4 emulation example
+@section M4 emulation example
+
+@subsection Introduction
+
+The @code{m4} emulation is an example of defining a macro language in @code{m0}.
+
+It is (at least now) not a goal to be 100% compatible with (GNU) @code{m4} or to be complete.
 
 Since @code{m0} will also detect macros with invalid characters of @code{m4} macros, it will
 probably be very difficult to be 100% compatible for cases where certain characteristics of
 @code{m4} are used.
 
 Also functions for regular expressions in @code{m0} seem not necessary as this functionality can also
-be accomplished with patterns.
+be accomplished with patterns. The macros related to regular expressions in (GNU) @code{m4} are therefore not 
+implemented.
 
-@section Emulation
+@subsection Emulation
 
 The following text of the emulation is generated from a source file for both text and code.
 From this source file different versions of @code{m4} are generated. These versions are:
@@ -1047,7 +1071,9 @@ can be called from the @code{builtin} macro.
 @end enumerate
 
 A big number of the builtin @code{m4} macros are directly linked to the functions in @code{m0}.
-Several patterns are used to implement the syntax of @code{m4}.
+Several patterns are used to implement the syntax of @code{m4}. Difficult is a new
+definition of builtin macros using the @code{defn} macro. The use of @code{defn} requires
+that its use is detected by a define and the define is a copy or a define depending on this.
 
 Some builtin @code{m4} macros are emulated using a collection of macros in the default macro set @code{0}.
 
@@ -1059,17 +1085,105 @@ macros. Another solution can be a proper naming of underlying macros such that t
 @include m4emu.texi
 
 
+@node M6 emulation example
+@section M6 emulation example
+
+@subsection Introduction
+
+The @code{m6} emulation is an example of defining a macro language in @code{m0}.
+
+The @code{m6} macro processor is a predecessor of @code{m4}. It does not seem to be used
+anymore, but as an example it seems to be still useful.
+
+Since there is no working @code{m6} for current systems, the testing of this emulation is
+limited. 
+
+@subsection Emulation
+
+The following text of the emulation is generated from a source file for both text and code.
+
+The original @code{m6} was written in Fortran and a later version can be found in
+Unix v6 written in a pre K&R C (see @url{https://minnie.tuhs.org/cgi-bin/utree.pl?file=V6/usr/source/m6}).
+
+However in this emulation only one version that is based on
+@cite{The M6 Macro Processor, Andrew D. Hall, Bell Laboratories, April 12, 1972}
+is made and indicated with @code{all}.
+
+
+@subsection Main design
+
+A similar approach as is used in the @code{m4} emulation could be used for the
+@code{m6} emulation. However, because the macros in @code{m6} look a lot 
+like S-expressions as known from Lisp, a different solution is chosen.
+
+In the macro set for execution of @code{m6} macros a main macro is defined
+that will trigger on all macros and will call the macro placed in the first
+argument. This gives some difficulties, because 3 macros (@code{GO}, @code{GOBK}
+and @code{DNL}) have a different behaviour for the collection of arguments.
+Thus the emulation design of @code{m4} might be a better choice, but for demonstration
+the current design is also fine.
+
+The main macro is defined in the @code{m6exec} macro set. The builtin and user macros
+are defined in the @code{m6def} macro set.
+
+@include m6emu.texi
+
+
+@node GPM emulation example
+@section GPM emulation example
+
+@subsection Introduction
+
+The @code{gpm} emulation is an example of defining a macro language in @code{m0}.
+
+The @code{gpm} macro processor is an early macro processor and is considered a
+very early predecessor of @code{m4}. It does not seem to be used
+anymore, but as an example it seems to be still useful.
+
+Since there is no working @code{gpm} macro processor for current systems, the testing of this emulation is
+limited. 
+
+@subsection Emulation
+
+The following text of the emulation is generated from a source file for both text and code.
+
+In this emulation the version that is described in 
+@cite{GPMX A portable general purpose macro processor adapted for preprocessing FORTRAN, Robert C. Gammill, The Rand Corporation, Santa Monica, California, 7 June 1976}
+is made and indicated with @code{all}.
+
+
+@subsection Main design
+
+A similar approach as is used in the @code{m6} emulation is used for the
+@code{gpm} emulation.
+
+In the macro set for execution of @code{gpm} macros a main macro is defined
+that will trigger on all macros and will call the macro placed in the first
+argument. The use of a macro call is necessary because it seems a practise that
+called macros are first defined during argument collection. Thus the called macro 
+is not yet defined when called.
+
+The main macro is defined in the @code{gpmexec} macro set. The builtin and user macros
+are defined in the @code{gpmdef} macro set.
+
+GPM has only 6 macros builtin. It is thus small and the characteristics of
+@code{gpm} are used to add complexity.
+
+@include gpmemu.texi
+
+
+
 
 @c ========================================================== Appendices
 
 @node Index for m0 builtins and stack instructions
 @appendix Index for @code{m0} builtins and stack instructions
 
-@appendixsec Builtins
+@appendixsec Builtin functions
 
-This index covers all @code{m0} builtins.
+This index covers all @code{m0} builtin functions.
 References are exclusively to the places where a
-macro is introduced the first time.
+function is introduced the first time.
 
 @printindex fn
 

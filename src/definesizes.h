@@ -29,14 +29,14 @@
  * at the cost of more memory use
  */
 
-#define input_buffer_size 100
-#define input_buffer_size_reserve 50
+#define input_buffer_size 400
+#define input_buffer_size_reserve 200
 
 #define init_size_processbuf 100
 #define add_size_processbuf 1000 
 
-#define output_buffer_size 100
-#define output_buffer_size_reserve 50
+#define output_buffer_size 400
+#define output_buffer_size_reserve 200
 
 #define div_entry_size 1000
 
@@ -70,6 +70,9 @@
 
 #define init_size_program_list 1024
 #define add_size_program_list 1024
+
+#define init_size_name_of_programs 32
+#define add_size_name_of_programs 64
 
 #define init_size_div_list 10
 #define add_size_div_list 50

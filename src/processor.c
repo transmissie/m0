@@ -126,7 +126,6 @@ int line_count_flag = 0;
 
 /* trace info */
 trace_setting trace;
-int macro_depth = 0;
 
 typedef enum
 {
@@ -861,8 +860,6 @@ static inline void reset_status_pat(status_pattern *stat_pat)
 
 void fill_arguments_pat(macro_def *macro, data_buffer **out)
 {
-  // status_pattern *backup_stat_pat,
-                 // new_stat_pat;
   data_buffer *def;
   pattern_data *backup_arglist;
   arg_text_return ret;
@@ -951,13 +948,17 @@ void fill_arguments(macro_def *macro, data_buffer **out)
       end_args;
   uint64_t check = 0ll,
            result;
-  uint8_t inp;
+  uint8_t inp,
+          inp_digit;
   arg_text_return ret;
   sds num_of_args;
+  int num_digits,
+      end_digits,
+      step_back;
 
   /* copy the definition to the output
    * and fill in the arguments
-   * using a part of the vectors of the bitap algoritm
+   * using a part of the vectors of the bitap algorithm
    */
   for(i = 0; i < macro->def_len; i++)
   {
@@ -976,26 +977,27 @@ void fill_arguments(macro_def *macro, data_buffer **out)
        * now check which one 
        */
 
-      /* simple arg */
       if((arg_vector[0] & check) != 0ULL)
       {
+        /* simple arg */
         stacknum = 0;
         num_args = current_status_pattern->num_of_args;
         start_args = 1 + current_status_pattern->base_of_args;
         end_args = num_args + 1;
         /* at this moment the output is filled one too far, thus: */
-        (*out)->position--;
+        // (*out)->position--;
+        step_back = 1;
       }
-      /* stacks arg */
-      // if((arg_vector[1] & check) != 0ULL)
       else
       {
+        /* stacks arg */
         stacknum = macro->def[i-1] - 'a';
         num_args = get_size_stack(stacknum);
         start_args = 0;
         end_args = num_args;
         /* at this moment the output is filled two too far, thus: */
-        (*out)->position -= 2;
+        // (*out)->position -= 2;
+        step_back = 2;
       }
 
       /* return argument */
@@ -1003,17 +1005,99 @@ void fill_arguments(macro_def *macro, data_buffer **out)
       {
         pos = inp - '0';
         // printf(" arg number %c %i, stack %i, ", inp, pos, stacknum);
-        ret = argument_text(stacknum, pos);
+        
+        end_digits = 0; /* default to use for check later */
+        num_digits = current_status_bitap->num_digits;
+        
+        /* digits of arg up to num_digits */
+        if((num_digits > 1) && (num_digits <= 9))
+        {
+          j = i + 1;
+          end_digits = i + num_digits;
+          
+          while((j < end_digits) && (j < macro->def_len))
+          {
+            inp_digit = macro->def[j];
+            if((inp_digit >= '0') && (inp_digit <= '9'))
+            {
+              pos *= 10;
+              pos += inp_digit - '0';
 
-        // printf(" return: %i %p \n", ret.length, ret.str_p);
+              // /* also run bitap algo  */
+              // check |= init_vector[3];          /* vector[3] has the bits for specific the arguments */ 
+              // check &= (*current_vec)[1][inp_digit];  /* only using the last part of this vector */
+              
+              i++;
+            }
+            else
+            {
+              end_digits = 0;
+            }
+            j++;
+            
+          }
+        }
+        
+        /* digits of arg exactly num_digits - 8 */
+        if((num_digits >= 10) && (num_digits <= 15))
+        {
+          j = i + 1;
+          end_digits = i + num_digits - 8;
+          
+          putchar_buffer(inp, out); /* in case of abort need this in output */
+          step_back++;
+          
+          while((j < end_digits) && (j < macro->def_len))
+          {
+            inp_digit = macro->def[j];
+            if((inp_digit >= '0') && (inp_digit <= '9'))
+            {
+              pos *= 10;
+              pos += inp_digit - '0';
+              
+              /* also run bitap algo in case of abort */
+              check |= init_vector[3];          /* vector[3] has the bits for specific the arguments */ 
+              check &= (*current_vec)[1][inp_digit];  /* only using the last part of this vector */
+              
+              /* copy input */
+              putchar_buffer(inp_digit, out);
+              step_back++;
+              
+              i++;
+            }
+            else
+            {
+              /* not enough digits, abort */
+              end_digits = -1;
+            }
+            j++;
+            
+          }
+          
+          if(j != end_digits)
+          {
+            end_digits = -1;
+          }              
+          
+        }
+        
+        /* only if the digits collection are ok */
+        if(end_digits >= 0)
+        {
+          ret = argument_text(stacknum, pos);
 
-        putchars_buffer(ret.str_p, ret.length, out);
+          (*out)->position -= step_back;
+          
+          putchars_buffer(ret.str_p, ret.length, out);
+        }
       }
 
       /* return number of arguments */
       if(inp == current_arg_chars->num)
       {
         num_of_args = sdsfromlonglong((long long int) num_args);
+
+        (*out)->position -= step_back;
 
         putchars_buffer(num_of_args, sdslen(num_of_args), out);
 
@@ -1023,6 +1107,8 @@ void fill_arguments(macro_def *macro, data_buffer **out)
       /* return all arguments */
       if(inp == current_arg_chars->all)
       {
+        (*out)->position -= step_back;
+
         for(j = start_args; j < end_args; j++)
         {
           ret = argument_text(stacknum, j);
@@ -1039,6 +1125,8 @@ void fill_arguments(macro_def *macro, data_buffer **out)
       /* return all arguments quoted */
       if(inp == current_arg_chars->allq)
       {
+        (*out)->position -= step_back;
+        
         for(j = start_args; j < end_args; j++)
         {
           ret = argument_text(stacknum, j);
@@ -1073,7 +1161,7 @@ void fill_arguments(macro_def *macro, data_buffer **out)
 
 void exec_macrocall(int index, data_buffer *arg_out, data_buffer **in, data_buffer **output);
 
-static inline void macro_or_call(macro_def *macro, data_buffer *arg_out, data_buffer **in, data_buffer **out)
+void macro_or_call(macro_def *macro, data_buffer *arg_out, data_buffer **in, data_buffer **out)
 {
   status_bitap *oldvecset;
   arg_text_return ret;
@@ -1190,8 +1278,8 @@ static inline void macro_or_call(macro_def *macro, data_buffer *arg_out, data_bu
     }
     else
     {
-      fprintf(stderr, "Error line: %i in file: %s line: %i; Macro %.*s in call to macro not found.\n", line_counter, current_input_file_buffer->filename, local_line_counter,  ret.length, ret.str_p);
-      exit(Exit_user);
+      print_warning(Exit_user, "Macro %.*s in call to macro not found.\n", ret.length, ret.str_p);
+      // exit(Exit_user);
     }
     
     /* shift stack back */
@@ -1416,17 +1504,7 @@ void exec_macro(int index, int macro_len, data_buffer **input, data_buffer **out
   
   
   /* buffer for argument output */
-  /* some performance optimisation with predetermined size */
-  // if((in->file < 0) && (in->size > init_size_processbuf))
-  // {
-    /* the input is not a file, but a buffer bigger than the default buffer size */
-    // arg_out =  alloc_io_buffer(in->size);
-    // fprintf(stderr," extra arg buf size: %i\n", in->size);
-  // }
-  // else
-  // {
-    arg_out =  alloc_io_buffer(init_size_processbuf);
-  // }
+  arg_out =  alloc_io_buffer(init_size_processbuf);
   arg_out->file = -1; /* so not real output, but a memory buffer */
   arg_out->position = 0;
   arg_out->divnum = (*output)->divnum;
@@ -1452,11 +1530,9 @@ void exec_macro(int index, int macro_len, data_buffer **input, data_buffer **out
 
   if(macro_size < 0)
   {
-    fprintf(stderr, "Error line: %i in file: %s line: %i; macro: %.*s size has become less than zero, pre size: %i, post size: %i\n", line_counter, current_input_file_buffer->filename, local_line_counter, macro_len, &((*output)->data[(*output)->position - macro_len + 1]), macro->pre_size, post_size); 
+    print_warning(Exit_user, "macro: %.*s size has become less than zero, pre size: %i, post size: %i\n", &((*output)->data[(*output)->position - macro_len + 1]), macro->pre_size, post_size); 
     exit(Exit_user);
   }
-  
-    // fprintf(stderr," post size: %i  %i  macro: %.*s \n", macro->post_size, post_size, macro_size, &((*output)->data[(*output)->position - macro_len + macro->pre_size + 1]));
   
   push_text(0, output, (*output)->position - macro_len + macro->pre_size + 1, macro_size);
 
@@ -1844,14 +1920,12 @@ int get_vlm_length(int vecnum, int entry)
 
     prev_mask = mask;
     
-    // fprintf(stderr, "char: %c  pos: %i   ", his_inchar[his_position], his_position);
     if(mask & check)
     {
       /* check bit set */
       mask >>= 1;
       his_position--;
       mask_len--;
-      // fprintf(stderr, "check bit\n");
     }
     else
     {
@@ -1859,7 +1933,6 @@ int get_vlm_length(int vecnum, int entry)
       {
         /* memory bit set */
         his_position--;
-        // fprintf(stderr, "mem bit\n");
       }
       else
       {
@@ -1868,8 +1941,6 @@ int get_vlm_length(int vecnum, int entry)
           /* zero bit mask set */
           mask >>= 1;
           mask_len -= 1;
-          // his_position--;
-          // fprintf(stderr, "zero mask bit\n");
         }
         else
         {
@@ -1878,8 +1949,6 @@ int get_vlm_length(int vecnum, int entry)
         }
       }
     }
-    
-    
   }
 
   /* if the first macro character can be more than one check previous positions */ 
@@ -1940,7 +2009,7 @@ static inline void run_vlm_check(int *len, int *macro_num,  pattern_masks *masks
   
 }  
 
-static inline void run_pat_check(int macro_num, int *arg_level,  pattern_masks *masks, pattern_registers *patcheck, data_buffer **buffer, data_buffer **output, arg_run *stop)
+static inline void run_pat_check(int macro_num, run_macro *runmacro,  int *arg_level,  pattern_masks *masks, pattern_registers *patcheck, data_buffer **buffer, data_buffer **output, arg_run *stop)
 {
   uint64_t arg_result;
   int j,
@@ -1962,32 +2031,52 @@ static inline void run_pat_check(int macro_num, int *arg_level,  pattern_masks *
       j = 0;
       while((j < masks[vecnum].masks_end) && (stop->status == arg_continu))
       {
-        if(((masks[vecnum].masks[j] & arg_result) != 0LL) && (masks[vecnum].masks_run_level[j] >= *arg_level))
+        if(((masks[vecnum].masks[j] & arg_result) != 0LL) && (masks[vecnum].masks_run_level[j] >= *arg_level) && (stop->status == arg_continu))
         {
           /* found the trigger */
           if(masks[vecnum].masks_run_patlen[j] < 0)
           {
-            *stop = exec_program(masks[vecnum].masks_run[j], -(masks[vecnum].masks_run_patlen[j]), current_status_pattern, output);
+            /* the one time trigger pattern */
+            if(masks[vecnum].masks_run[j] >= 0)
+            {
+              *stop = exec_program(masks[vecnum].masks_run[j], -(masks[vecnum].masks_run_patlen[j]), current_status_pattern, output);
+            }
             patcheck[vecnum].onetimemask &= ~(masks[vecnum].masks[j]);
           }
           else
           {
-            *stop = exec_program(masks[vecnum].masks_run[j], masks[vecnum].masks_run_patlen[j], current_status_pattern, output);
+            /* all other patterns */
+            if(masks[vecnum].masks_run[j] >= 0)
+            {
+              *stop = exec_program(masks[vecnum].masks_run[j], masks[vecnum].masks_run_patlen[j], current_status_pattern, output);
+            }
           }
+
+          if(stop->status == arg_no_macros)
+          {
+            /* stop the execution of macros.
+             * is set by instruction in pattern program.
+             */
+            *runmacro = Run_macro_no;
+            /* continu with pattern */
+            stop->status = arg_continu;
+          }
+
+          if(stop->status == arg_abort)
+          {
+            /* no argument collection, position input should be placed back
+             * output is a buffer (during argument collection)
+             * thus output->position can be used to determine number of bytes
+             */
+            (*buffer)->position -= (*output)->position + 1;
+            his.position -= (*output)->position;
+          }
+          
         }
         j++;
+
       }
     }
-  }
-  
-  if(stop->status == arg_abort)
-  {
-    /* no argument collection, position input should be placed back
-     * output is a buffer (during argument collection)
-     * thus output->position can be used to determine number of bytes
-     */
-    (*buffer)->position -= (*output)->position + 1;
-    his.position -= (*output)->position;
   }
   
 }  
@@ -2195,7 +2284,7 @@ static inline void run_macro_check(int *len, int *macro_num, uint64_t *current_c
     }
   }
   
-  (*len)++; /* compensate the 1 to many decrement */
+  (*len)++; /* compensate the 1 too many decrement */
 }
 
 
@@ -2247,8 +2336,6 @@ void process_input(data_buffer **buffer, data_buffer **output, run_macro runmacr
     prev_check = his_checks + his_index[his.position - 1];;
     prev_inp = his_inchar[his.position - 1];
     
-    patcheck = (pattern_registers *)(current_check + his.incr_checks);
-    prev_patcheck = (pattern_registers *)(prev_check + his.incr_checks);
     
     /* the current input byte */
     inp = (*buffer)->data[(*buffer)->position];
@@ -2269,6 +2356,7 @@ void process_input(data_buffer **buffer, data_buffer **output, run_macro runmacr
         run_macro_check(&len, &macro_num, current_check, &macro_type);
       }
     
+      /* if vlm exists then also do vlm checks */ 
       if(current_status_bitap->patlist != NULL)
       {
         vlmcheck = (pattern_registers *)(current_check + his.incr_macro);
@@ -2301,13 +2389,17 @@ void process_input(data_buffer **buffer, data_buffer **output, run_macro runmacr
         }
       }
  
-     }
+    }
 
     /* bitap algo for argument collection */
     if(arglist != NULL)
     {
+      patcheck = (pattern_registers *)(current_check + his.incr_checks);
+      prev_patcheck = (pattern_registers *)(prev_check + his.incr_checks);
+
       run_pattern(arglist->vec_size, arglist->masks, arglist->vec, prev_patcheck, patcheck, inp, prev_inp);
-      run_pat_check(macro_num, &arg_level, arglist->masks, patcheck, buffer, output, &stop);
+      run_pat_check(macro_num, &runmacro, &arg_level, arglist->masks, patcheck, buffer, output, &stop);
+
     }
     
     if(debug)

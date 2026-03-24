@@ -28,6 +28,8 @@
 #include "input.h"
 #include "output.h"
 #include "bitapvec.h"
+#include "processor.h"
+#include "macros.h"
 
 #include "stack.h"
 
@@ -98,9 +100,10 @@ op_stack *default_op_st[number_of_default_stacks];
 /* the stack status for making a stack for a current function */
 typedef struct stack_status
 {
-  int start[number_of_default_stacks];
-  int start_op[number_of_default_stacks];
-  int active_stack;
+  int start[number_of_default_stacks];          /* start position of stack */
+  int start_op[number_of_default_stacks];       /* start position of operator stack */
+  int active_stack;                             /* current active stack */
+  char clear_at_end[number_of_default_stacks];  /* flag to clear the stack when macro ends */
   struct stack_status *prev;
 } stack_status;
 
@@ -132,9 +135,14 @@ const command_entry command_list[] =
   {{"if      "}, &st_if, 0},       /* [4] */
   {{"else    "}, &st_else, 0},     /* [5] */
   {{"endif   "}, &st_nop, 0},      /* [6] */
+  {{"while   "}, &st_while, 0},    /* [7] */
+  {{"while_st"}, &st_while, 1},    /* [8] */
+  {{"endwhile"}, &st_endwhile, 0}, /* [9] */
+  {{"0call   "}, &st_subroutine, 0}, /* [10] */
   {{"nop     "}, &st_nop, 0},
   {{"pop     "}, &st_pop, 0},
   {{"dup     "}, &st_dup, 0},
+  {{"swap    "}, &st_swap, 0},
   {{"pop_to_0"}, &st_pop_to, 0},
   {{"pop_to_1"}, &st_pop_to, 1},
   {{"pop_to_2"}, &st_pop_to, 2},
@@ -156,6 +164,7 @@ const command_entry command_list[] =
   {{"end-4   "}, &st_endarg, -3},
   {{"argpos  "}, &st_argposition, 0},
   {{"argnum  "}, &st_argnumber, 0},
+  {{"m_depth "}, &st_macro_depth, 0},
   {{"=0      "}, &st_cmp_num, 0},
   {{"=1      "}, &st_cmp_num, 1},
   {{"=2      "}, &st_cmp_num, 2},
@@ -217,6 +226,7 @@ const command_entry command_list[] =
   {{"stack_f "}, &st_setstack, 5},
   {{"stack_g "}, &st_setstack, 6},
   {{"stack_h "}, &st_setstack, 7},
+  {{"putarg  "}, &st_push_toarg_num, 0},
   {{"putarg0 "}, &st_push_toarg, 0},
   {{"putarg1 "}, &st_push_toarg, 1},
   {{"putarg2 "}, &st_push_toarg, 2},
@@ -263,6 +273,14 @@ const command_entry command_list[] =
   {{"copyto_f"}, &st_copy, 5},
   {{"copyto_g"}, &st_copy, 6},
   {{"copyto_h"}, &st_copy, 7},
+  {{"copyfr_a"}, &st_copyfrom, 0},
+  {{"copyfr_b"}, &st_copyfrom, 1},
+  {{"copyfr_c"}, &st_copyfrom, 2},
+  {{"copyfr_d"}, &st_copyfrom, 3},
+  {{"copyfr_e"}, &st_copyfrom, 4},
+  {{"copyfr_f"}, &st_copyfrom, 5},
+  {{"copyfr_g"}, &st_copyfrom, 6},
+  {{"copyfr_h"}, &st_copyfrom, 7},
   {{"cat     "}, &st_cat, 0},
   {{"strlen  "}, &st_strlen, 0},
   {{"str*    "}, &st_str_multiply, 0},
@@ -271,7 +289,22 @@ const command_entry command_list[] =
   {{"nooverr "}, &st_overrule, 0},
   {{"recur_y "}, &st_overrule, 1},
   {{"recur_n "}, &st_overrule, 2},
+  {{"fun_call"}, &st_funtion_call, 0},
+  {{"no_macro"}, &st_no_macro_exec, 0},
+  {{"free_no "}, &st_set_stack_free, 'n'},
+  {{"free_yes"}, &st_set_stack_free, 'y'},
+  {{"m?_num  "}, &st_macro_num, 0},
+  {{"m?_name "}, &st_macroinfo, 1},
+  {{"m?_def  "}, &st_macroinfo, 2},
+  {{"m?_int  "}, &st_macroinfo, 3},
+  {{"m?_opt  "}, &st_macroinfo, 4},
+  {{"m?_col_p"}, &st_macroinfo, 5},
+  {{"m?_sub_p"}, &st_macroinfo, 6},
+  {{"m?_prog "}, &st_macroinfo, 7},
+  {{"m?_info "}, &st_macroinfo, 9},
+  {{"m?_type "}, &st_macroinfo, 10},
 };
+
 
 const int num_commands = sizeof(command_list) / sizeof(command_entry);
 
@@ -289,9 +322,26 @@ program_entry (*program_list);
 int size_program_list,
     end_program_list;
 
+typedef struct
+{
+  command_name name;
+  int program;
+} names_of_programs;
 
-int empty_string_on_stack;
+names_of_programs *programs = NULL;
+
+int size_programs = 0,
+    end_programs = 0;
+
     
+int empty_string_on_stack;
+
+/* var for the depth of the current macro
+ * placed here because info from this is available in instruction
+ */
+int macro_depth = 0;
+
+
 void init_program_list(void)
 {
   
@@ -344,30 +394,113 @@ int find_command(uint8_t *name, int len)
       ret = -1;
   
   /* copy name to search word */
-  for(i = 0; i < len; i++)
+  if(len <= 8)
   {
-    search.n8[i] = name[i];
-  }
-  /* and fill rest with space */
-  for(; i < 8; i++)
-  {
-    search.n8[i] = ' ';
-  }
-  
-  i = 0;
-  
-  while( (i < num_commands) && (ret < 0))
-  {
-    if(search.n64 == command_list[i].name.n64)
+    for(i = 0; i < len; i++)
     {
-      /* found command */
-      ret = i;
+      search.n8[i] = name[i];
     }
-    i++;
+    /* and fill rest with space */
+    for(; i < 8; i++)
+    {
+      search.n8[i] = ' ';
+    }
+    
+    i = 0;
+    
+    while( (i < num_commands) && (ret < 0))
+    {
+      if(search.n64 == command_list[i].name.n64)
+      {
+        /* found command */
+        ret = i;
+      }
+      i++;
+    }
   }
   
   return(ret);
 }
+
+
+void add_to_programs(uint8_t *name, int len, int program)
+{
+  int i;
+  
+  if(programs == NULL)
+  {
+    /* initialise */  
+    programs = xmalloc(sizeof(names_of_programs) * init_size_name_of_programs);
+    
+    size_programs = init_size_name_of_programs;
+    end_programs = 0;
+  }
+  
+  if(end_programs >= size_programs)
+  {
+    /* increase programs size */
+    programs = xrealloc(programs, sizeof(names_of_programs) * (size_programs + add_size_name_of_programs));
+    
+    size_programs += add_size_name_of_programs;
+  }
+  
+  /* copy name to name in programs */
+  if(len > 8)
+  {
+    len = 8;
+  }
+  
+  for(i = 0; i < len; i++)
+  {
+    programs[end_programs].name.n8[i] = name[i];
+  }
+  /* and fill rest with space */
+  for(; i < 8; i++)
+  {
+    programs[end_programs].name.n8[i] = ' ';
+  }
+  
+  programs[end_programs].program = program;
+  
+  end_programs++;
+}
+
+
+int find_call(uint8_t *name, int len)
+{
+  command_name search;
+  int i,
+      ret = -1;
+  
+  /* copy name to search word */
+  if((len <= 8) && (programs != NULL))
+  {
+    for(i = 0; i < len; i++)
+    {
+      search.n8[i] = name[i];
+    }
+    /* and fill rest with space */
+    for(; i < 8; i++)
+    {
+      search.n8[i] = ' ';
+    }
+    
+    i = 0;
+    
+    while( (i < end_programs) && (ret < 0))
+    {
+      if(search.n64 == programs[i].name.n64)
+      {
+        /* found command */
+        ret = programs[i].program;
+      }
+      i++;
+    }
+  }
+  
+  return(ret);
+}
+
 
 
 int str_to_commands(uint8_t *str, int length)
@@ -375,7 +508,8 @@ int str_to_commands(uint8_t *str, int length)
   int start,
       start_str,
       i,
-      command;
+      command,
+      call;
   long long int number;
   uint8_t in;
   
@@ -394,7 +528,7 @@ int str_to_commands(uint8_t *str, int length)
       // printf("-%c-%i+",str[i], i);
       i++;
     }
-
+    
     if(i < length)
     {
       /* the first char */
@@ -406,7 +540,6 @@ int str_to_commands(uint8_t *str, int length)
         /* find end of string */
         while(!((str[i] == '\"') && ((str[i+1] == ' ') || (str[i+1] == '\n'))) && (i < length - 1))
         {
-          // printf("+%c+%i-",str[i], i);
           i++;
         }
         
@@ -450,33 +583,57 @@ int str_to_commands(uint8_t *str, int length)
           push_num(const_var_stack,  number);
           
         }
-        else     /* otherwise it is a command */
+        else
         {
-          start_str = i;
-          /* find end of command */
-          while((str[i] != ' ') && (str[i] != '\n') && (i < length))
+          if(in == '@')   /* it is a call */
           {
-            // printf("!%c!%i+",str[i], i);
             i++;
+            start_str = i;
+            /* find end of call name */
+            while((str[i] != ' ') && (str[i] != '\n') && (i < length))
+            {
+              i++;
+            }
+
+            call = find_call(&(str[start_str]), i - start_str);
+            if(call >= 0)
+            {
+              (program_list[end_program_list]).command = 10; /* 10 = call to subroutine */
+              (program_list[end_program_list]).option = call;
+            }
+            else
+            {
+              /* error in string */
+              print_warning(Exit_user, "call to program: %.*s is not known.\n", i - start_str, &(str[start_str]));
+              /* no exit, need to fix increment */
+              end_program_list--;
+            }
+            
+            
           }
-          command = find_command(&(str[start_str]), i - start_str);
-          if(command >= 0)
+          else     /* otherwise it is an instruction */
           {
-            (program_list[end_program_list]).command = command;
-            (program_list[end_program_list]).option = command_list[command].option;
-            // printf(" new command: %i\n", command);
-          }
-          else
-          {
-            /* error in string */
-            fprintf(stderr, "Error line: %i in file: %s line: %i; command: ", line_counter, current_input_file_buffer->filename, local_line_counter);
-            fwrite(&(str[start_str]), 1, i - start_str, stderr);
-            fprintf(stderr, " is not known.\n");
-            exit_code = Exit_user; 
-            /* no exit, need to fix increment */
-            end_program_list--;
-          }
-          
+            start_str = i;
+            /* find end of command */
+            while((str[i] != ' ') && (str[i] != '\n') && (i < length))
+            {
+              i++;
+            }
+            command = find_command(&(str[start_str]), i - start_str);
+            if(command >= 0)
+            {
+              (program_list[end_program_list]).command = command;
+              (program_list[end_program_list]).option = command_list[command].option;
+              // printf(" new command: %i\n", command);
+            }
+            else
+            {
+              /* error in string */
+              print_warning(Exit_user, "instruction: %.*s is not known.\n", i - start_str, &(str[start_str]));
+              /* no exit, need to fix increment */
+              end_program_list--;
+            }
+          }  
         }
       }
       // printf("current end_program_list: %i\n", end_program_list);
@@ -485,7 +642,7 @@ int str_to_commands(uint8_t *str, int length)
       increase_program_list();
     }
   }
-
+  
   if(end_program_list > start)
   {
     /* add end to program */
@@ -607,6 +764,7 @@ void start_local_stacks(void)
   {
     new->start[i] = default_st[i]->stack_end;
     new->start_op[i] = default_op_st[i]->stack_end;
+    new->clear_at_end[i] = 'y';
   }
   
   new->active_stack  = 0;
@@ -629,8 +787,8 @@ void pop_stack(int stnum)
 
   if((stnum < 0) || (stnum >= number_of_default_stacks))
   {
-    fprintf(stderr, "Internal error line: %i in file: %s line: %i; trying to use stack: %i, using stack 0.\n", line_counter, current_input_file_buffer->filename, local_line_counter, stnum);
-    exit_code = Exit_internal; 
+    print_warning(Exit_internal, "Internal error; trying to use stack: %i, using stack 0.\n", stnum);
+    // exit_code = Exit_internal; 
     stnum = 0;
   }
 
@@ -653,39 +811,96 @@ void pop_stack(int stnum)
   }
 }
 
+void convert_to_sds(int stnum, int pos)
+{
+  stack *st;
+  data_buffer *data;
+  stack_type type;
+  
+  if((stnum < 0) || (stnum >= number_of_default_stacks))
+  {
+    print_warning(Exit_internal, "Internal error; trying to use stack: %i, using stack 0.\n", stnum);
+    // exit_code = Exit_internal; 
+    stnum = 0;
+  }
+
+  st = default_st[stnum];
+
+  if((pos < 0) || (pos >= st->stack_end))
+  {
+    print_warning(Exit_internal, "Internal error; trying to access past end of stack position: %i.\n", pos);
+    // exit_code = Exit_internal; 
+  }
+  else
+  {
+    type = st->st[pos].type;
+    
+    switch(type)
+    {
+      case buffer_pointer:
+        data = *(st->st[pos].value.buf_p);
+        st->st[pos].value.str = sdsnewlen(data->data + st->st[pos].start, st->st[pos].size);
+        st->st[pos].type = str_sds;
+        break;
+      case str_pointer:
+        st->st[pos].value.str = sdsnewlen(st->st[pos].value.str_p, st->st[pos].size);
+        st->st[pos].type = str_sds;
+        break;
+      default:
+        break;
+    }
+
+    if(debug_stack)
+    {
+      printf("converting string on stack: %i, pos: %i\n", stnum, pos); 
+    }
+
+  }
+}
 
 
 void end_local_stacks(void)
 {
-  int i;
+  int i,
+      j;
   stack_status *prev;
   
 
   if(st_status != NULL)
   {
     prev = st_status->prev; 
-
+    
     for(i = 0; i < number_of_default_stacks; i++)
     {
+      
       if(debug_stack)
       {
         printf("clearing stack %i: [%d, %d]\n", i,  st_status->start[i], default_st[i]->stack_end);
       }
       
-      while(default_st[i]->stack_end > st_status->start[i])
+      if(st_status->clear_at_end[i] == 'y')
       {
-        pop_stack(i);
+        while(default_st[i]->stack_end > st_status->start[i])
+        {
+          pop_stack(i);
+        }
+        default_op_st[i]->stack_end = st_status->start_op[i];
+      }
+      else
+      {
+        for(j = st_status->start[i]; j < default_st[i]->stack_end; j++)
+        {
+          convert_to_sds(i,j);
+        }
       }
       
-      default_op_st[i]->stack_end = st_status->start_op[i];
-
     }
-
+    
     xfree(st_status);
     
     st_status = prev;
   }
- 
+  
 }
 
 
@@ -695,8 +910,8 @@ int get_size_stack(int stnum)
 
   if((stnum < 0) || (stnum >= number_of_default_stacks))
   {
-    fprintf(stderr, "Internal error line: %i in file: %s line: %i; trying to use stack: %i, using stack 0.\n", line_counter, current_input_file_buffer->filename, local_line_counter, stnum);
-    exit_code = Exit_internal;
+    print_warning(Exit_internal, "Internal error; trying to use stack: %i, using stack 0.\n", stnum);
+    // exit_code = Exit_internal;
     stnum = 0;
   }
 
@@ -709,42 +924,44 @@ int get_size_stack(int stnum)
 int push_text(int stnum, data_buffer **text, int start, int len)
 {
   stack *st;
+  int stack_end;
 
   if((stnum < 0) || (stnum >= number_of_total_stacks))
   {
-    fprintf(stderr, "Internal error line: %i in file: %s line: %i; trying to use stack: %i, using stack 0.\n", line_counter, current_input_file_buffer->filename, local_line_counter, stnum);
-    exit_code = Exit_internal; 
+    print_warning(Exit_internal, "Internal error; trying to use stack: %i, using stack 0.\n", stnum);
+    // exit_code = Exit_internal; 
     stnum = 0;
   }
 
   st = default_st[stnum];
-
+  stack_end = st->stack_end;
+  
   if(debug_stack)
   {
-    printf(" start stack = %i, push text  '%.*s' to stack %i, end %i\n", st_status->start[stnum], len, &((*text)->data[start]), stnum, st->stack_end); 
+    printf(" start stack = %i, push text  '%.*s' to stack %i, end %i\n", st_status->start[stnum], len, &((*text)->data[start]), stnum, stack_end); 
   }
   
   if(len == 0)
   {
     /* put the empty string instead of requested */
-    st->st[st->stack_end].value.str = default_st[const_var_stack]->st[empty_string_on_stack].value.str;
-    st->st[st->stack_end].size = len;
-    st->st[st->stack_end].start = 0;
-    st->st[st->stack_end].type = str_sds_const;
+    st->st[stack_end].value.str = default_st[const_var_stack]->st[empty_string_on_stack].value.str;
+    st->st[stack_end].size = len;
+    st->st[stack_end].start = 0;
+    st->st[stack_end].type = str_sds_const;
   }
   else
   {
-    st->st[st->stack_end].value.buf_p = text;
-    st->st[st->stack_end].size = len;
-    st->st[st->stack_end].start = start;
-    st->st[st->stack_end].type = buffer_pointer;
+    st->st[stack_end].value.buf_p = text;
+    st->st[stack_end].size = len;
+    st->st[stack_end].start = start;
+    st->st[stack_end].type = buffer_pointer;
   }
   
   st->stack_end++;
   
   default_st[stnum] = increase_stack(st);
 
-  return(st->stack_end - 1);
+  return(stack_end);
 }
 
 int push_str(int stnum, uint8_t *text, int len)
@@ -753,8 +970,8 @@ int push_str(int stnum, uint8_t *text, int len)
 
   if((stnum < 0) || (stnum >= number_of_total_stacks))
   {
-    fprintf(stderr, "Internal error line: %i in file: %s line: %i; trying to use stack: %i, using stack 0.\n", line_counter, current_input_file_buffer->filename, local_line_counter, stnum);
-    exit_code = Exit_internal; 
+    print_warning(Exit_internal, "Internal error; trying to use stack: %i, using stack 0.\n", stnum);
+    // exit_code = Exit_internal; 
     stnum = 0;
   }
 
@@ -793,8 +1010,8 @@ int push_sds(int stnum, sds text)
 
   if((stnum < 0) || (stnum >= number_of_total_stacks))
   {
-    fprintf(stderr, "Internal error line: %i in file: %s line: %i; trying to use stack: %i, using stack 0.\n", line_counter, current_input_file_buffer->filename, local_line_counter, stnum);
-    exit_code = Exit_internal; 
+    print_warning(Exit_internal, "Internal error; trying to use stack: %i, using stack 0.\n", stnum);
+    // exit_code = Exit_internal; 
     stnum = 0;
   }
 
@@ -823,8 +1040,8 @@ int push_num(int stnum, long long int num)
 
   if((stnum < 0) || (stnum >= number_of_total_stacks))
   {
-    fprintf(stderr, "Internal error line: %i in file: %s line: %i; trying to use stack: %i, using stack 0.\n", line_counter, current_input_file_buffer->filename, local_line_counter, stnum);
-    exit_code = Exit_internal; 
+    print_warning(Exit_internal, "Internal error; trying to use stack: %i, using stack 0.\n", stnum);
+    // exit_code = Exit_internal; 
     stnum = 0;
   }
 
@@ -995,8 +1212,8 @@ long long int argument_num(int stnum, int pos)
 
   if((stnum < 0) || (stnum >= number_of_default_stacks))
   {
-    fprintf(stderr, "Internal error line: %i in file: %s line: %i; trying to use stack: %i, using stack 0.\n", line_counter, current_input_file_buffer->filename, local_line_counter, stnum);
-    exit_code = Exit_internal; 
+    print_warning(Exit_internal, "Internal error; trying to use stack: %i, using stack 0.\n", stnum);
+    // exit_code = Exit_internal; 
     stnum = 0;
   }
 
@@ -1051,8 +1268,8 @@ arg_text_return argument_text(int stnum, int pos)
   
   if((stnum < 0) || (stnum >= number_of_default_stacks))
   {
-    fprintf(stderr, "Internal error line: %i in file: %s line: %i; trying to use stack: %i, using stack 0.\n", line_counter, current_input_file_buffer->filename, local_line_counter, stnum);
-    exit_code = Exit_internal; 
+    print_warning(Exit_internal, "Internal error; trying to use stack: %i, using stack 0.\n", stnum);
+    // exit_code = Exit_internal; 
     stnum = 0;
   }
 
@@ -1068,24 +1285,28 @@ arg_text_return argument_text(int stnum, int pos)
     {
       case buffer_pointer:
         data = *(st->st[stack_pos].value.buf_p);
-        ret.str_p = &(data->data[st->st[stack_pos].start]);
+        ret.str_p = data->data + st->st[stack_pos].start;
         ret.length = st->st[stack_pos].size;
+        // fprintf(stderr, " arg from buffer: %p len: %i  str: %.*s\n", ret.str_p, ret.length, ret.length, ret.str_p); 
         break;
       case str_pointer:
         ret.str_p = st->st[stack_pos].value.str_p;
         ret.length = st->st[stack_pos].size;
+        // fprintf(stderr, " arg from str_pointer: %p len: %i  str: %.*s\n", ret.str_p, ret.length, ret.length, ret.str_p); 
         break;
       case str_sds:
       case str_sds_const:
         ret.str_p = st->st[stack_pos].value.str;
         ret.length = sdslen(st->st[stack_pos].value.str);
+        // fprintf(stderr, " arg from sds: %p len: %i  str: %.*s\n", ret.str_p, ret.length, ret.length, ret.str_p); 
         break;
       case number:
         ret.str_p = sdsfromlonglong(st->st[stack_pos].value.num);
         st->st[stack_pos].value.str = ret.str_p;
         st->st[stack_pos].type = str_sds;
         ret.length = sdslen(st->st[stack_pos].value.str);
-        // printf("\n p: %p, len: %i\n", st->st[stack_pos].value.str, ret.length);
+         // printf("\n p: %p, len: %i\n", st->st[stack_pos].value.str, ret.length);
+        // fprintf(stderr, " arg from number: %p len: %i  str: %.*s\n", ret.str_p, ret.length, ret.length, ret.str_p); 
         break;
     }
 
@@ -1137,8 +1358,8 @@ void swap_on_stack(int first_pos, int second_pos, int stnum)
 
   if((stnum < 0) || (stnum >= number_of_default_stacks))
   {
-    fprintf(stderr, "Internal error line: %i in file: %s line: %i; trying to use stack: %i, using stack 0.\n", line_counter, current_input_file_buffer->filename, local_line_counter, stnum);
-    exit_code = Exit_internal;
+    print_warning(Exit_internal, "Internal error; trying to use stack: %i, using stack 0.\n", stnum);
+    // exit_code = Exit_internal;
     stnum = 0;
   }
 
@@ -1166,58 +1387,65 @@ void swap_on_stack(int first_pos, int second_pos, int stnum)
 
 
 
-void copy_stack(int from, int pos, int stnum)
+void copy_from_to_stack(int from, int pos_from, int to, int pos_to)
 {
-  stack *st,
+  stack *st_to,
         *st_from;
   
-  if((stnum < 0) || (stnum >= number_of_default_stacks))
+  if((to < 0) || (to >= number_of_default_stacks))
   {
-    fprintf(stderr, "Internal error line: %i in file: %s line: %i; trying to use stack: %i, using stack 0.\n", line_counter, current_input_file_buffer->filename, local_line_counter, stnum);
-    exit_code = Exit_internal; 
-    stnum = 0;
+    print_warning(Exit_internal, "trying to use stack: %i, using stack 0.\n", to);
+    to = 0;
   }
 
   if((from < 0) || (from >= number_of_total_stacks))
   {
-    fprintf(stderr, "Internal error line: %i in file: %s line: %i; trying to use stack: %i, using stack 8.\n", line_counter, current_input_file_buffer->filename, local_line_counter, from);
-    exit_code = Exit_internal; 
+    print_warning(Exit_internal, "trying to use stack: %i, using stack 8.\n", from);
     from = 8;
   }
 
-  st = default_st[stnum];
+  st_to = default_st[to];
   st_from = default_st[from];
   
-  if(st_from->st[pos].type == str_sds)
+  if(st_from->st[pos_from].type == str_sds)
   {
     if(from == const_var_stack)
     {
-      st->st[st->stack_end].type = str_sds_const;
-      st->st[st->stack_end].size = st_from->st[pos].size;
-      st->st[st->stack_end].value.str = st_from->st[pos].value.str;
+      st_to->st[pos_to].type = str_sds_const;
+      st_to->st[pos_to].size = st_from->st[pos_from].size;
+      st_to->st[pos_to].value.str = st_from->st[pos_from].value.str;
     }
     else
     {
-      st->st[st->stack_end].type = str_sds;
-      st->st[st->stack_end].size = st_from->st[pos].size;
-      st->st[st->stack_end].value.str = sdsdup(st_from->st[pos].value.str);
+      st_to->st[pos_to].type = str_sds;
+      st_to->st[pos_to].size = st_from->st[pos_from].size;
+      st_to->st[pos_to].value.str = sdsdup(st_from->st[pos_from].value.str);
     }  
       
   }
   else
   {  
-    st->st[st->stack_end].type = st_from->st[pos].type;
-    st->st[st->stack_end].size = st_from->st[pos].size;
-    st->st[st->stack_end].start = st_from->st[pos].start;
-    st->st[st->stack_end].value.num = st_from->st[pos].value.num;
+    st_to->st[pos_to].type = st_from->st[pos_from].type;
+    st_to->st[pos_to].size = st_from->st[pos_from].size;
+    st_to->st[pos_to].start = st_from->st[pos_from].start;
+    st_to->st[pos_to].value.str_p = st_from->st[pos_from].value.str_p;
   }
+  
+}
+
+void copy_stack(int from, int pos, int stnum)
+{
+  stack *st;
+
+  st = default_st[stnum];
+
+  copy_from_to_stack(from, pos, stnum, st->stack_end);
   
   st->stack_end++;
 
   default_st[stnum] = increase_stack(st);
 
 }
-
 
 
 void set_argument(int stnum, int argnum, data_buffer **text, int start, int len)
@@ -1229,8 +1457,8 @@ void set_argument(int stnum, int argnum, data_buffer **text, int start, int len)
   
   if((stnum < 0) || (stnum >= number_of_default_stacks))
   {
-    fprintf(stderr, "Internal error line: %i in file: %s line: %i; trying to use stack: %i, using stack 0.\n", line_counter, current_input_file_buffer->filename, local_line_counter, stnum);
-    exit_code = Exit_internal; 
+    print_warning(Exit_internal, "Internal error; trying to use stack: %i, using stack 0.\n", stnum);
+    // exit_code = Exit_internal; 
     stnum = 0;
   }
 
@@ -1264,8 +1492,8 @@ int push_op(int stnum, int command, int option, int rank)
 
   if((stnum < 0) || (stnum >= number_of_default_stacks))
   {
-    fprintf(stderr, "Internal error line: %i in file: %s line: %i; trying to use op stack: %i, using stack 0.\n", line_counter, current_input_file_buffer->filename, local_line_counter, stnum);
-    exit_code = Exit_internal; 
+    print_warning(Exit_internal, "Internal error; trying to use op stack: %i, using stack 0.\n", stnum);
+    // exit_code = Exit_internal; 
     stnum = 0;
   }
 
@@ -1291,8 +1519,8 @@ int execute_op(int stnum, int program_counter, status_pattern *status, data_buff
 
   if((stnum < 0) || (stnum >= number_of_default_stacks))
   {
-    fprintf(stderr, "Internal error line: %i in file: %s line: %i; trying to use op stack: %i, using stack 0.\n", line_counter, current_input_file_buffer->filename, local_line_counter, stnum);
-    exit_code = Exit_internal; 
+    print_warning(Exit_internal, "Internal error; trying to use op stack: %i, using stack 0.\n", stnum);
+    // exit_code = Exit_internal; 
     stnum = 0;
   }
 
@@ -1318,8 +1546,8 @@ void print_stack(int stnum)
   
   if((stnum < 0) || (stnum >= number_of_default_stacks))
   {
-    fprintf(stderr, "Internal error line: %i in file: %s line: %i; trying to use stack: %i, using stack 0.\n", line_counter, current_input_file_buffer->filename, local_line_counter, stnum);
-    exit_code = Exit_internal; 
+    print_warning(Exit_internal, "Internal error; trying to use stack: %i, using stack 0.\n", stnum);
+    // exit_code = Exit_internal; 
     stnum = 0;
   }
 
@@ -1408,6 +1636,21 @@ int st_dup(int option, int program_counter, status_pattern *status, data_buffer 
 }
 
 
+int st_swap(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
+{
+  if(default_st[st_status->active_stack]->stack_end > (st_status->start[st_status->active_stack] + 1))
+  {
+    swap_on_stack(default_st[st_status->active_stack]->stack_end - 2, default_st[st_status->active_stack]->stack_end - 1, st_status->active_stack);
+  }
+  
+  if(debug_stack)
+  {
+    printf("SWAP at pc: %i\n", program_counter);
+  }
+  return(1);
+}
+
+  
 int st_copy(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
 {
 
@@ -1417,13 +1660,34 @@ int st_copy(int option, int program_counter, status_pattern *status, data_buffer
   }
   else
   {
-    fprintf(stderr, "Error line: %i in file: %s line: %i; stack underflow in command: copyto.\n", line_counter, current_input_file_buffer->filename, local_line_counter);
-    exit_code = Exit_user; 
+    print_warning(Exit_user, "stack underflow in instruction: copyto.\n");
+    // exit_code = Exit_user; 
   }
   
   if(debug_stack)
   {
     printf("COPY at pc: %i\n", program_counter);
+  }
+  return(1);
+}
+
+
+int st_copyfrom(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
+{
+
+  if(default_st[option]->stack_end > st_status->start[option])
+  {
+    copy_stack(option, default_st[option]->stack_end - 1, st_status->active_stack);
+  }
+  else
+  {
+    print_warning(Exit_user, "stack underflow in instruction: copyfrom.\n");
+    exit_code = Exit_user; 
+  }
+  
+  if(debug_stack)
+  {
+    printf("COPY FROM at pc: %i\n", program_counter);
   }
   return(1);
 }
@@ -1443,7 +1707,7 @@ int st_get_arg(int option, int program_counter, status_pattern *status, data_buf
   {
     copy_stack(const_var_stack, empty_string_on_stack, st_status->active_stack);
   }
-  
+
   if(debug_stack)
   {
     printf("GET ARG %i at pc: %i\n", option, program_counter);
@@ -1475,9 +1739,11 @@ int st_get_arg_num(int option, int program_counter, status_pattern *status, data
     copy_stack(const_var_stack, empty_string_on_stack, st_status->active_stack);
   }
 
+  // fprintf(stderr, "GET ARG num: %i pos: %i\n", value, pos );
+
   if(debug_stack)
   {
-    printf("GET ARG by num: %i at pc: %i\n", option, program_counter);
+    printf("GET ARG by num: %i at pc: %i\n", value, program_counter);
   }
   return(1);
 }
@@ -1511,24 +1777,65 @@ int st_push_toarg(int option, int program_counter, status_pattern *status, data_
       sdsfree(st0->st[pos].value.str);
     }
 
-    if(st->st[top].type == str_sds )
-    {
-      st0->st[pos].type = str_sds;
-      st0->st[pos].size = st->st[top].size;
-      st0->st[pos].value.str = sdsdup(st->st[top].value.str);
-    }
-    else
-    {
-      st0->st[pos].type = st->st[top].type;
-      st0->st[pos].size = st->st[top].size;
-      st0->st[pos].value.num = st->st[top].value.num;
-    }  
+    copy_from_to_stack(st_status->active_stack, top, 0, pos);
       
   }
-   
+
+  // fprintf(stderr, "push to ARG start: %i pos: %i opt: %i\n",st_status->start[0], pos, option );
+  
   if(debug_stack)
   {
     printf("PUSH TO ARG option:%i from stack: %i to stack 0 position: %i at pc: %i\n", option, st_status->active_stack, pos,  program_counter);
+  }
+  return(1);
+}
+
+
+int st_push_toarg_num(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
+{
+  stack *st,
+        *st0;
+  int top,
+      pos;
+  int i;
+  int value;
+
+  value = pop_num(st_status->active_stack);
+
+  if(value < 0)
+  {
+    value = 0;
+  }
+  
+  st = default_st[st_status->active_stack];
+  top = st->stack_end - 1;
+
+  st0 = default_st[0];
+  pos = st_status->start[0] + value;
+  
+  
+  /* fill up the 0 stack to the top if necessary */
+  for(i = st0->stack_end; i <= pos; i++)
+  {
+    copy_stack(const_var_stack, empty_string_on_stack, 0);
+  }
+  
+  if(st->stack_end > st_status->start[st_status->active_stack])
+  {
+    if(st0->st[pos].type == str_sds)
+    {
+      sdsfree(st0->st[pos].value.str);
+    }
+
+    copy_from_to_stack(st_status->active_stack, top, 0, pos);
+      
+  }
+
+  // fprintf(stderr, "push to ARG start: %i pos: %i opt: %i\n",st_status->start[0], pos, option );
+  
+  if(debug_stack)
+  {
+    printf("PUSH TO ARG NUM:%i from stack: %i to stack 0 position: %i at pc: %i\n", value, st_status->active_stack, pos,  program_counter);
   }
   return(1);
 }
@@ -1543,8 +1850,8 @@ int st_setstack(int option, int program_counter, status_pattern *status, data_bu
   }
   else
   {
-    fprintf(stderr, "Internal error line: %i in file: %s line: %i; trying to set stack: %i, no change.\n", line_counter, current_input_file_buffer->filename, local_line_counter, option);
-    exit_code = Exit_internal; 
+    print_warning(Exit_internal, "Internal error, trying to set stack: %i, no change.\n", option);
+    // exit_code = Exit_internal; 
   }
 
   if(debug_stack)
@@ -1567,8 +1874,8 @@ int st_setbase(int option, int program_counter, status_pattern *status, data_buf
   }
   else
   {
-    fprintf(stderr, "Error line: %i in file: %s line: %i; trying to set base to: %i, no change.\n", line_counter, current_input_file_buffer->filename, local_line_counter, (int) value1);
-    exit_code = Exit_user;
+    print_warning(Exit_internal, "Internal error, trying to set base to: %i, no change.\n", (int) value1);
+    // exit_code = Exit_user;
   }
 
   if(debug_stack)
@@ -1588,8 +1895,8 @@ int st_base_option(int option, int program_counter, status_pattern *status, data
   }
   else
   {
-    fprintf(stderr, "Internal error line: %i in file: %s line: %i; trying to set base to: %i, no change.\n", line_counter, current_input_file_buffer->filename, local_line_counter, option);
-    exit_code = Exit_internal;
+    print_warning(Exit_internal, "Internal error, trying to set base to: %i, no change.\n", option);
+    // exit_code = Exit_internal;
   }
 
   if(debug_stack)
@@ -1727,11 +2034,15 @@ int st_get_from_out_opt(int option, int program_counter, status_pattern *status,
 int st_replace_out_opt(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
 {
   arg_text_return ret;
-  int top;
+  int top,
+      stacksize;
 
-  top = default_st[st_status->active_stack]->stack_end - 1;
+  stacksize = default_st[st_status->active_stack]->stack_end - st_status->start[st_status->active_stack];
 
-  if(top >= st_status->start[st_status->active_stack])
+  top = stacksize - 1;
+
+
+  if(stacksize >= 1)
   {
     ret = argument_text(st_status->active_stack, top);
     
@@ -1748,8 +2059,12 @@ int st_replace_out_opt(int option, int program_counter, status_pattern *status, 
       (*output)->position = 0;
     }
     
-    putchars_buffer(ret.str_p, ret.length, output);
-
+    if(ret.length > 0)
+    {
+      // fprintf(stderr, " put p: %p, len: %i\n", ret.str_p, ret.length);
+      putchars_buffer(ret.str_p, ret.length, output);
+    }
+    
     (*output)->position--;
 
     pop_stack(st_status->active_stack);
@@ -1817,6 +2132,19 @@ int st_argnumber(int option, int program_counter, status_pattern *status, data_b
   if(debug_stack)
   {
     printf("ARGNUM at pc: %i\n", program_counter);
+  }
+  return(1);
+}
+
+
+int st_macro_depth(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
+{
+
+  push_num(st_status->active_stack, macro_depth);
+
+  if(debug_stack)
+  {
+    printf("M_DEPTH at pc: %i\n", program_counter);
   }
   return(1);
 }
@@ -1987,8 +2315,8 @@ int st_if_cmp_set(int option, int program_counter, status_pattern *status, data_
   }
   else
   {
-    fprintf(stderr, "Error line: %i in file: %s line: %i; stack underflow in IFCMPSET.\n", line_counter, current_input_file_buffer->filename, local_line_counter);
-    exit_code = Exit_user;
+    print_warning(Exit_user, "stack underflow in IFCMPSET.\n");
+    // exit_code = Exit_user;
   }
 
   if(debug_stack)
@@ -2004,25 +2332,30 @@ int st_cmp_string(int option, int program_counter, status_pattern *status, data_
 {
   arg_text_return ret1,
                   ret2;
-  int top,
+  int stacksize,
+      top,
       memres;
   long long int cmpresult;
 
   cmpresult = 0;
 
-  top = default_st[st_status->active_stack]->stack_end - 1;
+  stacksize = default_st[st_status->active_stack]->stack_end - st_status->start[st_status->active_stack];
 
+  top = stacksize - 1;
 
-  if(top > st_status->start[st_status->active_stack])
+  // fprintf(stderr, "top: %i start: %i\n", top, st_status->start[st_status->active_stack]);
+
+  if(stacksize >= 2)
   {
     ret1 = argument_text(st_status->active_stack, top);
 
     ret2 = argument_text(st_status->active_stack, top - 1);
 
-    if(ret1.length == ret2.length)
+    if((ret1.length > 0) && (ret1.length == ret2.length))
     {
       /* lengths should be equal otherwise strings can not be equal */
 
+      
       /* check if strings are equal per char */
       memres = memcmp(ret1.str_p, ret2.str_p, ret1.length);
 
@@ -2031,6 +2364,15 @@ int st_cmp_string(int option, int program_counter, status_pattern *status, data_
         cmpresult = 1;
       }
     }
+    else
+    {
+      if((ret1.length == 0) && (ret2.length == 0))
+      {
+        cmpresult = 1;
+      }
+    }
+
+    // fprintf(stderr, "CMP string: %.*s with %.*s result: %lli len1: %i len2: %i\n", ret1.length, ret1.str_p, ret2.length, ret2.str_p, cmpresult, ret1.length, ret2.length);
 
     pop_stack(st_status->active_stack);
     pop_stack(st_status->active_stack);
@@ -2039,7 +2381,7 @@ int st_cmp_string(int option, int program_counter, status_pattern *status, data_
   else
   {
     /* compare result is already false */
-    if(top == st_status->start[st_status->active_stack])
+    if(stacksize == 1)
     {
       /* pop only 1 */
       pop_stack(st_status->active_stack);
@@ -2047,6 +2389,7 @@ int st_cmp_string(int option, int program_counter, status_pattern *status, data_
   }
 
   push_num(st_status->active_stack, cmpresult);
+
 
   if(debug_stack)
   {
@@ -2367,6 +2710,117 @@ int st_else(int option, int program_counter, status_pattern *status, data_buffer
 }
 
 
+int st_while(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
+{
+  long long int value;
+  int command,
+      pc_begin,
+      level;
+      
+  if(debug_stack)
+  {
+    printf("WHILE endwhile at pc: %i\n", program_counter);
+  }
+  
+  pc_begin = program_counter;
+
+  
+  level = 1;
+  if(option == 0)
+  {
+    value =  pop_num(st_status->active_stack);
+  }
+  else
+  {
+    value = default_st[st_status->active_stack]->stack_end - st_status->start[st_status->active_stack];
+  }
+  
+  if(value == 0)
+  {
+    /* find endwhile or end */
+    do
+    {
+      program_counter++;
+      command = (program_list[program_counter]).command;
+
+      if((command == 7) || (command == 8))
+      {
+        /* another while increase the level */
+        level++;
+      }
+
+      if(command == 9)
+      {
+        /* endwhile decrease the level */
+        level--;
+      }
+
+
+    }
+    while((command >= 0) && !( (command == 9) && (level <= 1) ) );
+      
+    if(command < 0) /* the program counter should be placed on the end instruction */
+    {
+      program_counter--;
+    }
+
+    return(program_counter - pc_begin + 1); 
+  }
+  else
+  {
+    return(1); 
+  }
+}
+
+
+int st_endwhile(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
+{
+  int command,
+      pc_begin,
+      level;
+      
+  if(debug_stack)
+  {
+    printf("ENDWHILE at pc: %i\n", program_counter);
+  }
+  
+  pc_begin = program_counter;
+
+  
+  level = 1;
+  
+    /* find while */
+    do
+    {
+      program_counter--;
+      command = (program_list[program_counter]).command;
+
+      if((command == 7) || (command == 8))
+      {
+        /* a while decrease the level */
+        level--;
+      }
+
+      if(command == 9)
+      {
+        /* another endwhile increase the level */
+        level++;
+      }
+
+
+    }
+    while((command >= 0) && !( ((command == 7) || (command == 8)) && (level < 1) ) );
+      
+    if(command < 0) /* this is an error, the program counter should be placed on the next instruction */
+    {
+      print_warning(Exit_user, "endwhile without a while instruction.\n");
+      program_counter = pc_begin + 1;
+    }
+
+    return(program_counter - pc_begin); 
+}
+
+
 /* mathematical instructions for integers
  * 
  */
@@ -2410,8 +2864,8 @@ int st_modulo(int option, int program_counter, status_pattern *status, data_buff
   else
   {
     result = 0;
-    fprintf(stderr, "Error line: %i in file: %s line: %i; modulo by 0.\n", line_counter, current_input_file_buffer->filename, local_line_counter);
-    exit_code = Exit_user;
+    print_warning(Exit_user, "modulo by 0.\n");
+    // exit_code = Exit_user;
   }
 
   push_num(st_status->active_stack, result);
@@ -2442,8 +2896,8 @@ int st_divide(int option, int program_counter, status_pattern *status, data_buff
   else
   {
     result = LLONG_MAX;
-    fprintf(stderr, "Error line: %i in file: %s line: %i; division by 0.\n", line_counter, current_input_file_buffer->filename, local_line_counter);
-    exit_code = Exit_user;
+    print_warning(Exit_user, "division by 0.\n");
+    // exit_code = Exit_user;
   }
   
   push_num(st_status->active_stack, result);
@@ -2719,13 +3173,16 @@ int st_cat(int option, int program_counter, status_pattern *status, data_buffer 
   arg_text_return ret2,
                   ret1;
   sds new;
-  int top;
-  
-  top = default_st[st_status->active_stack]->stack_end - 1;
-  
+  int top,
+      stacksize;
   
   
-  if(top > st_status->start[st_status->active_stack])
+  stacksize = default_st[st_status->active_stack]->stack_end - st_status->start[st_status->active_stack];
+
+  top = stacksize - 1;
+
+
+  if(stacksize > 1)
   {
     ret2 = argument_text(st_status->active_stack, top);
     
@@ -2744,7 +3201,7 @@ int st_cat(int option, int program_counter, status_pattern *status, data_buffer 
   }
   else
   {
-    if(top < st_status->start[st_status->active_stack])
+    if(stacksize == 0)
     {
      copy_stack(const_var_stack, empty_string_on_stack, st_status->active_stack);
     }
@@ -2767,49 +3224,62 @@ int st_str_multiply(int option, int program_counter, status_pattern *status, dat
   sds string,
   new;
   int top,
-      i;
+      i,
+      stacksize;
   long long int val;
   
   
   new = sdsempty();
   
-  top = default_st[st_status->active_stack]->stack_end - 1;
+  stacksize = default_st[st_status->active_stack]->stack_end - st_status->start[st_status->active_stack];
 
-  ret1 = argument_text(st_status->active_stack, top);
+  top = stacksize - 1;
 
-  string = sdsnewlen(ret1.str_p, ret1.length);
 
-  pop_stack(st_status->active_stack);
-
-  val = pop_num(st_status->active_stack);
-
-  for(i = 0; i < val; i++)
+  if(stacksize > 0)
   {
-    new = sdscatsds(new, string);
-  }
     
-  push_sds(st_status->active_stack, new);
-
+    ret1 = argument_text(st_status->active_stack, top);
+    
+    string = sdsnewlen(ret1.str_p, ret1.length);
+    
+    pop_stack(st_status->active_stack);
+    
+    val = pop_num(st_status->active_stack);
+    
+    for(i = 0; i < val; i++)
+    {
+      new = sdscatsds(new, string);
+    }
+    
+    push_sds(st_status->active_stack, new);
+    
+    sdsfree(string);
+    
+  }
+  
   if(debug_stack)
   {
     printf("STR MULTIPLY %i at pc: %i\n", option, program_counter);
   }
-
   
-  sdsfree(string);
-
   return(1); 
 }
+
+
 
 int st_strlen(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
 {
   arg_text_return ret;
-  int top;
+  int stacksize,
+      top;
 
-  top = default_st[st_status->active_stack]->stack_end - 1;
+  stacksize = default_st[st_status->active_stack]->stack_end - st_status->start[st_status->active_stack];
+
+  top = stacksize - 1;
 
 
-  if(top >= st_status->start[st_status->active_stack])
+  if(stacksize > 0)
   {
     ret = argument_text(st_status->active_stack, top);
 
@@ -2818,7 +3288,11 @@ int st_strlen(int option, int program_counter, status_pattern *status, data_buff
     push_num(st_status->active_stack, ret.length);
 
   }
-
+  else
+  {
+        push_num(st_status->active_stack, 0);
+  }
+  
   if(debug_stack)
   {
     printf("STR LEN %i at pc: %i\n", option, program_counter);
@@ -2857,8 +3331,8 @@ int st_op_stack_ex_if(int option, int program_counter, status_pattern *status, d
   }
   else
   {
-    fprintf(stderr, "Error line: %i in file: %s line: %i; can not push command to operator stack because at end of program.\n", line_counter, current_input_file_buffer->filename, local_line_counter);
-    exit_code = Exit_user;
+    print_warning(Exit_user, "can not push command to operator stack because at end of program.\n");
+    // exit_code = Exit_user;
   }
 
   if(debug_stack)
@@ -2912,14 +3386,14 @@ int st_op_stack_ex_to(int option, int program_counter, status_pattern *status, d
     }
     else
     {
-      fprintf(stderr, "Error line: %i in file: %s line: %i; no command to compare with operator stack because at end of program.\n", line_counter, current_input_file_buffer->filename, local_line_counter);
-      exit_code = Exit_user;
+      print_warning(Exit_user, "no command to compare with operator stack because at end of program.\n");
+      // exit_code = Exit_user;
     }
   }
   else
   {
-    fprintf(stderr, "Error line: %i in file: %s line: %i; no command to compare with operator stack because at end of program.\n", line_counter, current_input_file_buffer->filename, local_line_counter);
-    exit_code = Exit_user;
+    print_warning(Exit_user, "no command to compare with operator stack because at end of program.\n");
+    // exit_code = Exit_user;
   }
 
   if(debug_stack)
@@ -2943,8 +3417,8 @@ int st_op_stack_push(int option, int program_counter, status_pattern *status, da
   }
   else
   {
-    fprintf(stderr, "Error line: %i in file: %s line: %i; can not push command to operator stack because at end of program.\n", line_counter, current_input_file_buffer->filename, local_line_counter);
-    exit_code = Exit_user;
+    print_warning(Exit_user, "can not push command to operator stack because at end of program.\n");
+    // exit_code = Exit_user;
   }
 
   if(debug_stack)
@@ -2955,6 +3429,167 @@ int st_op_stack_push(int option, int program_counter, status_pattern *status, da
 
   return(2);
 }
+
+
+
+
+
+/* special instructions */
+
+/* call to function
+ * 
+ */
+int st_funtion_call(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
+{
+  arg_text_return ret;
+  int stacksize,
+      top,
+      function_num;
+
+  stacksize = default_st[st_status->active_stack]->stack_end - st_status->start[st_status->active_stack];
+
+  top = stacksize - 1;
+
+
+  ret = argument_text(st_status->active_stack, top);
+
+  if(ret.str_p != NULL)
+  {
+    function_num = find_internal(ret.str_p, ret.length);
+
+    if(function_num > 0)
+    {
+      internal[function_num].intern(output);
+    }
+    else
+    {
+      print_warning(Exit_user, "call to non existing function: %.*s\n", ret.length, ret.str_p);
+    }
+  }
+
+  pop_stack(st_status->active_stack);
+  
+  return(1);
+}
+
+
+int st_no_macro_exec(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
+{
+
+  stop->status = arg_no_macros;
+  
+  return(1);
+}
+
+
+int st_set_stack_free(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
+{
+
+  st_status->clear_at_end[st_status->active_stack] = option;
+  
+  return(1);
+}
+
+/* macro infos
+ * 
+ */
+
+int st_macro_num(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
+{
+  arg_text_return ret2,
+                  ret1;
+  int number,
+      top,
+      stacksize;
+  
+  
+  stacksize = default_st[st_status->active_stack]->stack_end - st_status->start[st_status->active_stack];
+
+  top = stacksize - 1;
+
+
+  if(stacksize > 1)
+  {
+    ret2 = argument_text(st_status->active_stack, top);
+    
+    ret1 = argument_text(st_status->active_stack, top - 1);
+    
+    number = macro_num(ret1.str_p, ret1.length, ret2.str_p, ret2.length) + 1;
+
+    
+    pop_stack(st_status->active_stack);
+    pop_stack(st_status->active_stack);
+    
+    push_num(st_status->active_stack, number);
+    
+  }
+
+  if(debug_stack)
+  {
+    printf("MACRO NUMBER %i at pc: %i\n", option, program_counter);
+  }
+
+  
+  return(1); 
+}
+
+
+
+
+int st_macroinfo(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
+{
+  sds new;
+  int macronum;
+  
+  
+  new = sdsempty();
+  
+  
+  macronum = pop_num(st_status->active_stack) - 1;
+  
+  new = macro_infos(macronum, option, new);
+  
+  push_sds(st_status->active_stack, new);
+  
+  
+  if(debug_stack)
+  {
+    printf("MACRO INFO %i at pc: %i\n", option, program_counter);
+  }
+  
+  return(1); 
+}
+
+
+/* subroutine */
+int st_subroutine(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
+{
+  int local_counter,
+      local_option,
+      command;
+      
+  local_counter = option;
+  
+  command = (program_list[local_counter]).command;
+
+  while(command > 1)  /* command 0 and 1 mean abort and stop, < 0 end of program */  
+  {
+    local_option = (program_list[local_counter]).option;
+    local_counter += command_list[command].command(local_option, local_counter, status, output, stop);
+    command = (program_list[local_counter]).command;
+  }
+  
+  if((command == 0) || (command == 1))
+  {
+    /* jump to the abort or stop */
+    return(local_counter - program_counter);
+  }
+  else
+  {
+    return(1);
+  }
+}
+
 
 /* main function to execute program_list
  * 
@@ -2967,8 +3602,6 @@ arg_run exec_program(int program_counter, int pattern_len, status_pattern *statu
       option;
   
   stop.status = arg_continu;
-  // stop.replace_backup = -1; /* -1 = no replace */
-  // stop.replace_text = NULL;
   stop.pattern_len = pattern_len;
   
   command = (program_list[program_counter]).command;
@@ -3034,6 +3667,11 @@ void print_program(int program_counter, data_buffer **out)
         putchars_buffer(number, sdslen(number), out);
         sdsfree(number);
         break;
+      case 10:
+        /* call to program */    
+        putchar_buffer('@', out);
+        putchars_buffer((uint8_t *) programs[option].name.n8, 8, out);
+        break;
       default:
         putchars_buffer((uint8_t *) command_list[command].name.n8, 8, out);
     }
@@ -3045,4 +3683,47 @@ void print_program(int program_counter, data_buffer **out)
   }
   
 
+}
+
+sds sds_print_program(sds value, int program_counter)
+{
+  int command,
+      option;
+  sds number;
+  
+  command = (program_list[program_counter]).command;
+  
+  while(command >= 0)  /* command < 0 end of program */  
+  {
+    option = (program_list[program_counter]).option;
+    switch(command)
+    {
+      case 2:
+        /* string */
+        value = sdscatlen(value, "\"", 1);
+        value = sdscatlen(value, default_st[const_var_stack]->st[option].value.str, default_st[const_var_stack]->st[option].size);
+        value = sdscatlen(value, "\"", 1);
+        break;
+      case 3:
+        /* number */    
+        number = sdsfromlonglong(default_st[const_var_stack]->st[option].value.num);
+        value = sdscatlen(value, number, sdslen(number));
+        sdsfree(number);
+        break;
+      case 10:
+        /* call to program */    
+        value = sdscatlen(value, "@", 1);
+        value = sdscatlen(value, programs[option].name.n8, 8);
+        break;
+      default:
+        value = sdscatlen(value, command_list[command].name.n8, 8);
+    }
+    
+    value = sdscatlen(value, " ", 1);
+    
+    program_counter ++;
+    command = (program_list[program_counter]).command;
+  }
+  
+return(value);
 }

@@ -517,7 +517,7 @@ void trace_line(int depth)
 {
   int ret;
   
-  ret = dprintf(trace_file, "\n%*cline: %4i, depth: %i:", depth, ' ', line_counter, depth);
+  ret = dprintf(trace_file, "\n -%i- %*cline: %4i:", depth, depth, ' ', line_counter);
     
   if (ret < 0)
   {

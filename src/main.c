@@ -56,6 +56,10 @@ static struct argp_option options[] = {
   {"define",   'D', "name[=value]" ,      0,  "Define a macro; if value is missing, the value is an empty string. "
     "The value can be any string, but the macro can not be defined to take arguments."
     " The order with respect to file names is not significant.", 0},
+  {"fatal-warnings",   'E', 0, 0,  "Controls the effect of warnings. "
+    "If specified once, warnings are printed, exit codes are not set and execution continues. "
+    "If specified twice, warnings are printed, exit codes are set, but execution continues. "
+    "If specified three times, warnings are printed, exit codes are set, execution stops.", 0},
   {"output",   'o', "FILE", 0,  "Output to FILE instead of standard output.", 0},
   {"traceon",  'T', 0,      0,  "Set tracing on. This will output information when a macro is called to standard output by default.", 0},
   {"tracefile",'t', "TRACEFILE", 0,  "Output trace information to TRACEFILE instead of standard output.", 0},
@@ -73,7 +77,8 @@ struct arguments
       silent,
       statistics,
       verbose,
-      trace;
+      trace,
+      warning_level;
   char *output_file;
   char *trace_file;
 };
@@ -99,6 +104,10 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
       // printf("D: %s", arg);
       arguments->defines = sdscat(arguments->defines, arg);
       arguments->defines = sdscat(arguments->defines, "\n");
+      break;
+    case 'E':
+      // printf("E: %s", arg);
+      arguments->warning_level ++;
       break;
     case 'v':
       arguments->verbose = 1;
@@ -206,6 +215,7 @@ int main (int argc, char **argv)
   arguments.statistics = 0;
   arguments.verbose = 0;
   arguments.trace = 0;
+  arguments.warning_level = 0;
   arguments.output_file = "-";
   arguments.trace_file = "-";
 
@@ -232,6 +242,9 @@ int main (int argc, char **argv)
   /* set options after --,  used by macros */
   arg_options = arguments.var_options;;
 
+  /* set warning level */
+  warning_level = arguments.warning_level;
+  
   /* the first input buffer, used for the files in the arguments */ 
   file_input = alloc_io_buffer(input_buffer_size);
   

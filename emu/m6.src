@@ -1,0 +1,334 @@
+COMMENT
+
+Copyright 2025, 2026 Marco de Beurs
+ 
+This file is part of m0.
+
+m0 is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License,
+or (at your option) any later version.
+
+m0 is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with m0. If not, see <https://www.gnu.org/licenses/>.
+
+END
+HEADIF:At the start;all
+TEXT
+
+At the start the macros used to define the macros for @code{m6} are defined.
+This is all straightforward linking of macro names to builtin functions.
+
+END
+CODE
+0_define:0_pattern:;;pattern;nr01;0
+0_define:0_set_var:;;set_var;nr01;0
+0_define:0_get_var:;;get_var;nr01;0
+0_define:0_chars_pattern:;;charpat;nr01;0
+0_define:0_chars_args:;;chararg;nr01;0
+0_define:0_specialchar:;;specialc;nr01;0
+0_define:0_def_mcall:;;defmcall;nr01;0
+0_define:0_atlast:;;at_last;nr01;0
+0_define:0_mset:;;macroset;nr01;0
+END
+IF:all
+TEXT
+
+Setting the defaults. The first is also the default of @code{m0}.
+The second line defines the special characters for the arguments. This is missing the fifth character.
+It is thus not possible to select arguments from other stacks than the first stack.
+
+END
+CODE
+0_chars_pattern:[]-\@+*?~
+0_chars_args:1$*@#;101;102;103;m6exec
+0_chars_args:1$*@#;101;102;103;m6def
+0_chars_args:1$*@#$;111;112;103
+END
+HEADIF:Quoting in default macro set;all
+TEXT
+
+In the next part a macro with a pattern is used to have quoting in the macros in the
+default macro set @code{0} operational.
+The quoting is thus not a builtin function in @code{m0}. 
+
+END
+CODE
+0_set_var:111;+-+
+0_set_var:112;-+-
+0_pattern:0string;[@00-@ff]~;stack_b 1 stack_a begin-1
+0_pattern:0string;+-+;stack_b 1 +
+0_pattern:0string;-+-;stack_b 1 - dup =0 if stack_a end stop endif
+0_define:+-+;$1;;nn00 ;0string
+END
+HEADIF:Quoting;all
+TEXT
+
+In the next part a macro with a pattern is used to have quoting in @code{m6}. 
+
+END
+CODE
+0_set_var:101;<
+0_set_var:102;>
+0_set_var:103;,
+0_pattern:string;[@00-@ff]~;stack_b 1 stack_a begin-1
+0_pattern:string;<;stack_b 1 +
+0_pattern:string;>;stack_b 1 - dup =0 if stack_a end stop endif
+0_define:<;$1;;nn00 ;string;;;m6exec
+END
+HEADIF:Collecting arguments of macros;all
+TEXT
+
+The collecting of arguments in @code{m6} macros is executed with a pattern named @code{m6} 
+containing small programs.
+
+The macros @code{GO} or @code{GOBK} are special cases.
+Therefore the pattern will detect these 
+and then all arguments after the second argument
+are eaten when the argument equals 1.
+If the argument does not equal 1, then the pattern stops, so
+that the text after these macros is output.
+
+In this case also an undocumented implementation feature
+is used to let the collection of arguments continue until
+the end of the buffer. In the implementation of @code{m0},
+the replacement text is put in a memory buffer that is 
+used as input to the bitap algorithm. At the end of the buffer
+the collection of arguments (in this case only for these two
+macros) ends and the execution of the macro continues.
+This results in the effect as described in @code{m6} for these
+two macros.
+
+The @code{DNL} macro is also a special case and 
+is also performed in this pattern. The argument
+collection is stopped when a "\n" is encountered.
+
+In the normal case all arguments 9 and larger
+are also collected together into argument 9.
+This is so defined in @code{m6}.
+
+END
+CODE
+0_pattern:m6;[@00-@ff]~;begin-1 stack_b 0 stack_c 0
+0_pattern:m6;+-+GO[,:;]-+-;stack_b argnum <1 if 1 endif
+0_pattern:m6;+-+GOBK[,:;]-+-;stack_b argnum <1 if 1 endif
+0_pattern:m6;+-+DNL[,:;]-+-;stack_c argnum <1 if 1 endif
+0_pattern:m6;,;argnum 9 < if  stack_a end begin endif 
+0_pattern:m6;+-+;-+-; recur_n 
+0_pattern:m6;+-+[:;]-+-;+-+stack_a end stack_b dup =0 if 
+stack_c dup =0 ifthen stop  
+else
+dup =1 if
+  getarg2 =1 if
+    2
+    no_macro
+    else
+    stop
+    endif
+  endif
+endif -+-
+0_pattern:m6;+-+
+-+-;stack_c dup =1 if stack_a end stop endif
+END
+HEADIF:Main macro for executing all macros;all
+TEXT
+
+The main macro will collect all arguments including the macro name
+and will make an @code{mcall} to the macro.
+
+This is therefore a relatively simple macro.
+END
+CODE
+0_def_mcall:#;;m6def;rr00 ;m6;;m6exec
+END
+HEADIF:GO, GOBK;all
+TEXT
+These two macros are a bit different from normal macros.
+They will remove or keep the rest of a replacement text after the macro.
+They are similar to an @code{if} but their influence is outside of the macro.
+
+Therefore the @code{m6} pattern will do the check of the if
+of the argument for these macros. The called macros are nop
+except for setting the no recurrent in the @code{GO} macro.
+
+END
+CODE
+0_define:GOBK;;;nn00;m6;;;m6def
+0_define:GO;;;nn00;m6;;recur_n;m6def
+END
+HEADIF:DEF;all
+TEXT
+
+The macros will be defined in the @code{m6def} macro set.
+
+They will be called from the main macro. Therefore the argument
+collection has no significance. 
+END
+CODE
+0_define:DEF;;define;nn00;m6;;stack_a pop_to_3 "" "nn00" "" "" "" "m6def";m6def
+END
+HEADIF:COPY;all
+TEXT
+
+END
+CODE
+0_define:COPY;;copy;nn00;m6;;stack_a pop_to_3 "m6def" "m6def";m6def
+END
+HEADIF:SEQ;all
+TEXT
+
+END
+CODE
+0_define:SEQ;$1;;nn00;m6;;stack_a pop_to_3 strcmp;m6def
+END
+HEADIF:SNE;all
+TEXT
+
+END
+CODE
+0_define:SNE;$1;;nn00;m6;;stack_a pop_to_3 strcmp !;m6def
+END
+HEADIF:GT;all
+TEXT
+
+END
+CODE
+0_define:GT;$1;;nn00;m6;;stack_a pop_to_3 >;m6def
+END
+HEADIF:GE;all
+TEXT
+
+END
+CODE
+0_define:GE;$1;;nn00;m6;;stack_a pop_to_3 >=;m6def
+END
+HEADIF:LT;all
+TEXT
+
+END
+CODE
+0_define:LT;$1;;nn00;m6;;stack_a pop_to_3 <;m6def
+END
+HEADIF:LE;all
+TEXT
+
+END
+CODE
+0_define:LE;$1;;nn00;m6;;stack_a pop_to_3 <=;m6def
+END
+HEADIF:EQ;all
+TEXT
+
+END
+CODE
+0_define:EQ;$1;;nn00;m6;;stack_a pop_to_3 =;m6def
+END
+HEADIF:NE;all
+TEXT
+
+END
+CODE
+0_define:NE;$1;;nn00;m6;;stack_a pop_to_3 !=;m6def
+END
+HEADIF:IF;all
+TEXT
+
+The @code{IF} will call a macro in the @code{0} macro set
+to redo the arguments with the @code{m6if} pattern.
+This pattern will do the to do the comparisons 
+and set the correct answer.
+
+END
+CODE
+0_pattern:m6if;[@00-@ff]~;stack_a begin-1  
+0_pattern:m6if;[,:];+-+stack_a end begin 
+stack_b argnum 2 mod =0 if
+argnum 1 - getarg =1 if 
+argnum getarg 
+endif endif-+-   
+0_pattern:m6if;[:]; stop
+0_def_mcall:IF;6_IF;0;nn00;m6;;m6def
+0_define:6_IF;0_IF$@:;;rn00;m6;;;0
+0_define:0_IF;$b0;;nr00;m6if;;;0
+END
+HEADIF:SIZE;all
+TEXT
+
+END
+CODE
+0_define:SIZE;$1;;nn00;m6;;stack_a pop_to_2 strlen;m6def
+END
+HEADIF:SUBSTR;all
+TEXT
+
+END
+CODE
+0_define:SUBSTR;;substr;nn00;m6;;;m6def
+END
+HEADIF:ADD;all
+TEXT
+
+END
+CODE
+0_define:ADD;$1;;nn00;m6;;stack_a pop_to_3 +;m6def
+END
+HEADIF:SUB;all
+TEXT
+
+END
+CODE
+0_define:SUB;$1;;nn00;m6;;stack_a pop_to_3 -;m6def
+END
+HEADIF:MPY;all
+TEXT
+
+END
+CODE
+0_define:MPY;$1;;nn00;m6;;stack_a pop_to_3 *;m6def
+END
+HEADIF:DIV;all
+TEXT
+
+END
+CODE
+0_define:DIV;$1;;nn00;m6;;+-+stack_b getarg2 =0 if
+"" putarg1 else stack_a pop_to_3 / endif-+-;m6def
+END
+HEADIF:EXP;all
+TEXT
+
+END
+CODE
+0_define:EXP;$1;;nn00;m6;;+-+stack_b getarg2 <0 if
+"" putarg1 else stack_a pop_to_3 power endif-+-;m6def
+END
+HEADIF:DNL;all
+TEXT
+
+The @code{DNL} does nothing. All the work is performed in the @code{m6}
+pattern.
+
+END
+CODE
+0_define:DNL;;;nn00;;;;m6def
+END
+HEADIF:Source, End, Trace;all
+TEXT
+
+These macros are not implemented.
+
+END
+HEADIF:end of emulation file, start of m6 files;all
+TEXT
+
+Finally switch to the @code{m6exec} macro set.
+
+END
+CODE
+0_mset:m6exec
+END

@@ -28,12 +28,6 @@ typedef  uint64_t vectors[3][size_index];    /* the bit vectors for the bitap al
 
 extern vectors  (*current_vec);
 
-// typedef  uint64_t checks[3];    /* the register used to hold the bit pattern in the bitap algorithm */
-
-// extern checks (*current_check);
-
-// extern uint64_t (*current_check)[];
-
 extern const uint64_t init_vector[4];
 
 extern const uint64_t mask_vector[4];
@@ -146,6 +140,7 @@ typedef struct status_bitap
   pattern_data *patlist;     /* pattern list for variable macros */
   argument_chars *argchars;  /* the different chars */
   sds name;                  /* name of the macro set */
+  int num_digits;            /* number of digits after the argument chars */ 
   int quote_var_start,       /* the positions of the quote strings */
       quote_var_end,
       quote_var_separator;
@@ -158,19 +153,22 @@ extern status_bitap *current_status_bitap;
 /* extern for statistics */
 extern status_bitap *first_status_bitap;
 
+
+/* Types to set different pattern parts. 
+ * To allow for complex regular expressions it should be set if a
+ * part should:
+ * start; activated by input
+ * not start; activated by previous part or another mask
+ * 
+ */
 typedef enum
 {
-  pattern_no_append,
-  pattern_append
+  pattern_no_append,  /* for normal pattern parts that start and end */
+  pattern_append,     /* pattern part that starts by previous part and ends */
+  pattern_end         /* pattern part that starts by mask and ends */
 } pattern_append_option;
 
 
-extern int check_mem_end;
-
-
-// uint64_t (*new_checks(int))[];
-
-// void free_checks(int);
 
 argument_chars *init_arg_chars(uint8_t, uint8_t, uint8_t, uint8_t, uint8_t);
 

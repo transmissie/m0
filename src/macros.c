@@ -87,8 +87,11 @@ const builtins internal[] =
   {{"define  "}, &define_macro},
   {{"pshmcall"}, &push_macrocall},
   {{"defmcall"}, &def_macrocall},
+  {{"copy    "}, &define_copy},
+  {{"pushcopy"}, &push_copy},
   {{"pop     "}, &pop_macro},
   {{"undefine"}, &undefine_macro},
+  {{"set_info"}, &set_info},
   {{"info    "}, &info_macro},
   {{"macroset"}, &set_macroset},
   {{"divert  "}, &divert},
@@ -110,7 +113,8 @@ const builtins internal[] =
   {{"num2chr "}, &num_to_char},
   {{"substr  "}, &string_substr},
   {{"strtrans"}, &string_translate},
-  {{"num2str "}, &number_to_string}
+  {{"num2str "}, &number_to_string},
+  {{"program "}, &add_program}
 };
 
 
@@ -532,26 +536,29 @@ int find_internal(uint8_t *name, int len)
       ret = -1;
   
   /* copy name to search word */
-  for(i = 0; i < len; i++)
+  if(len <= 8)
   {
-    search.n8[i] = name[i];
-  }
-  /* and fill rest with space */
-  for(; i < 8; i++)
-  {
-    search.n8[i] = ' ';
-  }
-  
-  i = 0;
-  
-  while( (i < num_internal) && (ret < 0))
-  {
-    if(search.n64 == internal[i].name.n64)
+    for(i = 0; i < len; i++)
     {
-      /* found internal */
-      ret = i;
+      search.n8[i] = name[i];
     }
-    i++;
+    /* and fill rest with space */
+    for(; i < 8; i++)
+    {
+      search.n8[i] = ' ';
+    }
+    
+    i = 0;
+    
+    while( (i < num_internal) && (ret < 0))
+    {
+      if(search.n64 == internal[i].name.n64)
+      {
+        /* found internal */
+        ret = i;
+      }
+      i++;
+    }
   }
   
   if(debug)
@@ -705,8 +712,198 @@ void output_arg(int argnum, data_buffer **out)
 }
 
 
+
+/* Functions to be called from stack programs
+ *
+ * 
+ *
+*/
+
+int macro_num(uint8_t *name, int name_len, uint8_t *macroset, int macroset_len)
+{
+  int macro_name,
+      macro_name_len,
+      macro_exist = -1;
+  status_bitap *vecset;
+  ret_find_macro ret_macro;
+
+  
+  macro_name = str_to_charstr(name, name_len);
+  
+  macro_name_len = (charstr[macro_name]).data.size;
+  
+
+  if(macroset_len > 0)
+  {
+    vecset = find_vectorset(macroset, macroset_len);
+    if(vecset == NULL)
+    {
+      print_warning(Exit_user, "macro set: %.*s is incorrect. Using default.\n", macroset_len, macroset);
+      vecset = current_status_bitap;
+    }
+  }
+  else
+  {
+    vecset = current_status_bitap;
+  }
+
+  if((macro_name_len > 0) && (macro_name_len <= 64))
+  {  
+    /* the length of the macro is correct */
+    
+    /* the macro should already exist */
+    ret_macro = find_existing_macro(vecset, name, macro_name_len, name_len);
+    macro_exist = ret_macro.macro_pos;
+  }
+  
+  // fprintf(stderr, " find macro: %.*s in set %.*s num: %i\n", name_len, name, macroset_len, macroset, macro_exist);
+  /* remove macro name from memory */
+  reduce_charstr(macro_name);
+  
+  return(macro_exist);
+}
+  
+  
+sds macro_infos(int macronum, int infotype, sds returnvalue)
+{
+  pattern_data *arglist,
+               *filllist;
+  uint8_t options[5];
+  
+  
+  if((macronum >= 0) && (macronum < end_macro_list) && ((macro_list[macronum]).name_len > 0))
+  {
+    switch(infotype)
+    {
+      case 1:
+        /* name of macro */
+        returnvalue = sdscpylen(returnvalue, (macro_list[macronum]).name, (macro_list[macronum]).name_len);
+        break;
+      case 2:
+        /* definition or called macro */
+        returnvalue = sdscpylen(returnvalue, (macro_list[macronum]).def, (macro_list[macronum]).def_len);
+        break;
+      case 3:
+        /* builtin or mcall */
+        if((macro_list[macronum]).mcallset != NULL)
+        {
+          /* mcall */
+          returnvalue = sdscpylen(returnvalue, (macro_list[macronum]).mcallset->name, sdslen((macro_list[macronum]).mcallset->name));
+        }
+        else
+        {
+          /* builtin */
+          returnvalue = sdscpylen(returnvalue, internal[(macro_list[macronum]).builtin].name.n8, 8);
+        }
+        break;
+      case 4: 
+        /* fill options string */
+        if((macro_list[macronum]).recursive == Recursive_yes)
+        {
+          options[0] = 'r';
+        }
+        else
+        {
+          options[0] = 'n';
+        }
+        
+        if((macro_list[macronum]).arg_type == Run_macro_yes)
+        {
+          options[1] = 'r';
+        }
+        else
+        {
+          options[1] = 'n';
+        }
+        
+        options[2] = (macro_list[macronum]).pre_size + '0';
+        
+        if((macro_list[macronum]).post_size >= 0)
+        {
+          options[3] = (macro_list[macronum]).post_size + '0';
+        }
+        else
+        {
+          options[3] = 'S';
+        }
+        
+        options[4] = (macro_list[macronum]).virtual_char;
+        
+        returnvalue = sdscpylen(returnvalue, options, 5);
+        break;
+      case 5:       
+        /* argument pattern */
+        arglist = (macro_list[macronum]).arglist;
+        if(arglist != NULL)
+        {
+          returnvalue = sdscpylen(returnvalue, arglist->name, sdslen(arglist->name));
+        }
+        else
+        {
+          returnvalue = sdscpylen(returnvalue, "", 0);
+        }
+        break;
+      case 6:        
+        /* fill pattern */
+        filllist = (macro_list[macronum]).filllist;
+        if(filllist != NULL)
+        {
+          returnvalue = sdscpylen(returnvalue, filllist->name, sdslen(filllist->name));
+        }
+        else
+        {
+          returnvalue = sdscpylen(returnvalue, "", 0);
+        }
+        break;
+      case 7:
+        /* program */
+        if((macro_list[macronum]).program >= 0)
+        {
+          returnvalue = sds_print_program(returnvalue, (macro_list[macronum]).program);
+        }
+        break;
+      case 9:        
+        /*  info field */
+        if((macro_list[macronum]).info != NULL)
+        {
+          returnvalue = sdscpylen(returnvalue, (macro_list[macronum]).info, (macro_list[macronum]).info_len);
+        }
+        break;
+      case 10:        
+        /*  macro or mcall */
+        if((macro_list[macronum]).mcallset != NULL)
+        {
+          /* mcall */
+          returnvalue = sdscpylen(returnvalue, "mcall", 5);
+        }
+        else
+        {
+          /* builtin */
+          returnvalue = sdscpylen(returnvalue, "macro", 5);
+        }
+        break;
+      default:
+        break;
+    }
+  }
+  else
+  {
+    print_warning(Exit_user, "macro with number: %i is not defined. No information can be output.\n", macronum);
+  }
+  
+ return(returnvalue);
+}  
+
+
+
+
+
 /* from here the macro functions
  *
+ * 
+ * 
+ * 
+ * 
  *
 */
 
@@ -788,14 +985,11 @@ void clear_pattern(data_buffer **out)
   }
   else
   {
-    fprintf(stderr, "Error line: %i in file: %s line: %i; pattern with name: ", line_counter, current_input_file_buffer->filename, local_line_counter);
-    fwrite(pat_name.str_p, 1, pat_name.length, stderr);
-    fprintf(stderr, " does not exist.\n ");
-    exit_code = Exit_user;
-
+    print_warning(Exit_user, "pattern with name: %.*s does not exist. Can not clear pattern.\n", pat_name.length, pat_name.str_p);
   }
 
 }
+
 
 void copy_pattern(data_buffer **out)
 {
@@ -824,14 +1018,29 @@ void copy_pattern(data_buffer **out)
   }
   else
   {
-    fprintf(stderr, "Error line: %i in file: %s line: %i; pattern with name: ", line_counter, current_input_file_buffer->filename, local_line_counter);
-    fwrite(pat_name.str_p, 1, pat_name.length, stderr);
-    fprintf(stderr, " does not exist.\n ");
-    exit_code = Exit_user;
-
+    print_warning(Exit_user, "pattern with name: %.*s does not exist. Can not perform copy of pattern.\n", pat_name.length, pat_name.str_p);
   }
 
 }
+
+
+void add_program(data_buffer **out)
+{
+  arg_text_return program_name,
+                  program_text;
+  int program;
+
+      
+  program_name = argument_text(0, 1);  /* first arg is name of program */
+ 
+  program_text = argument_text(0, 2);  /* second arg is the program  */
+  
+  program = str_to_commands(program_text.str_p, program_text.length);
+  
+  add_to_programs(program_name.str_p, program_name.length, program);
+
+}
+
 
 
 /* define macros
@@ -894,7 +1103,7 @@ void defpush_macro(int defpush, int defcall)
   name = ret.str_p;
 
   name_len = ret.length;
-  
+
   macro_name = str_to_charstr(ret.str_p, ret.length);
   
   macro_name_len = (charstr[macro_name]).data.size;
@@ -928,10 +1137,7 @@ void defpush_macro(int defpush, int defcall)
       {
         internalfunction = 0; /* the nop */
         
-        fprintf(stderr, "Error line: %i in file: %s line: %i; internal function: ", line_counter, current_input_file_buffer->filename, local_line_counter);
-        fwrite(ret.str_p, 1, ret.length, stderr);
-        fprintf(stderr, " does not exist. NOP is used instead.\n ");
-        exit_code = Exit_user; 
+        print_warning(Exit_user, "internal function: %.*s does not exist. NOP is used instead.\n", ret.length, ret.str_p);
       }
     }
   }
@@ -1017,8 +1223,7 @@ void defpush_macro(int defpush, int defcall)
 
     if(argpattern == NULL) 
     {
-      fprintf(stderr, "Error line: %i in file: %s line: %i; pattern: %.*s in macro definition is incorrect.\n", line_counter, current_input_file_buffer->filename, local_line_counter, ret.length, ret.str_p);
-      exit_code = Exit_user; 
+      print_warning(Exit_user, "pattern: %.*s in macro definition is incorrect. Not using an argument collection pattern.\n", ret.length, ret.str_p);
     }
   }
   else
@@ -1045,8 +1250,7 @@ void defpush_macro(int defpush, int defcall)
       
       if(fillpattern == NULL) 
       {
-        fprintf(stderr, "Error line: %i in file: %s line: %i; pattern: %.*s in macro definition is incorrect.\n", line_counter, current_input_file_buffer->filename, local_line_counter, ret.length, ret.str_p);
-        exit_code = Exit_user; 
+        print_warning(Exit_user, "pattern: %.*s in macro definition is incorrect. Not using an argument substitution pattern.\n", ret.length, ret.str_p);
       }
       
     }
@@ -1144,7 +1348,14 @@ void defpush_macro(int defpush, int defcall)
       /* fill in new macro data and definition */
       (macro_list[macro_exist]).recursive = macro_recursive;
       (macro_list[macro_exist]).arg_type = arg_recursive;
-      (macro_list[macro_exist]).def = sdsnewlen(definition, def_len);
+      if(def_len >= 0)
+      {
+        (macro_list[macro_exist]).def = sdsnewlen(definition, def_len);
+      }
+      else
+      {
+        (macro_list[macro_exist]).def = sdsnewlen(definition, 0);
+      }
       (macro_list[macro_exist]).def_len = def_len;
       (macro_list[macro_exist]).builtin = internalfunction;
       (macro_list[macro_exist]).pre_size = pre_size;
@@ -1155,6 +1366,8 @@ void defpush_macro(int defpush, int defcall)
       (macro_list[macro_exist]).virtual_char = virtual_char;
       (macro_list[macro_exist]).mcallset = call_vecset;
 
+      (macro_list[macro_exist]).info = NULL;
+      (macro_list[macro_exist]).info_len = -1;
       
      if(debug)
      {
@@ -1182,7 +1395,14 @@ void defpush_macro(int defpush, int defcall)
       (macro_list[end_macro_list]).arg_type = arg_recursive;
       (macro_list[end_macro_list]).name = sdsnewlen(name, name_len);
       (macro_list[end_macro_list]).name_len = macro_name_len;
-      (macro_list[end_macro_list]).def = sdsnewlen(definition, def_len);
+      if(def_len >= 0)
+      {
+        (macro_list[end_macro_list]).def = sdsnewlen(definition, def_len);
+      }
+      else
+      {
+        (macro_list[end_macro_list]).def = sdsnewlen(definition, 0);
+      }
       (macro_list[end_macro_list]).def_len = def_len;
       (macro_list[end_macro_list]).builtin = internalfunction;
       (macro_list[end_macro_list]).pre_size = pre_size;
@@ -1193,6 +1413,9 @@ void defpush_macro(int defpush, int defcall)
       (macro_list[end_macro_list]).program = program;
       (macro_list[end_macro_list]).virtual_char = virtual_char;
       (macro_list[end_macro_list]).mcallset = call_vecset;
+
+      (macro_list[end_macro_list]).info = NULL;
+      (macro_list[end_macro_list]).info_len = -1;
       
       if(debug)
       {
@@ -1239,10 +1462,7 @@ void defpush_macro(int defpush, int defcall)
   }
   else
   {
-    fprintf(stderr, "Error line: %i in file: %s line: %i; length: %i of macro name: ", line_counter, current_input_file_buffer->filename, local_line_counter, macro_name_len);
-    fwrite(name, 1, name_len, stderr);
-    fprintf(stderr, " is incorrect. This macro is thus not defined.\n ");
-    exit_code = Exit_user; 
+          print_warning(Exit_user, "length: %i of macro name: %.*s is incorrect. This macro is thus not defined.\n", macro_name_len, name_len, name);
   }
 
   /* remove macro name from memory */
@@ -1277,6 +1497,266 @@ void push_macrocall(data_buffer **out)
   defpush_macro(0, 1);
 
 }
+
+
+
+/* copy_macro is general function to copy macros and macrocalls
+ * 
+ * arguments on stack 0 when macro:
+ * 1: name of source macro
+ * 2: name of destination macro
+ * 3: vector set (macro set) of source (optional)
+ * 4: vector set (macro set) of destination (optional)
+ * 
+ */
+
+void copy_macro(int defpush)
+{
+  int macro_dest_name,
+      macro_dest_name_len,
+      macro_source_name,
+      macro_source_name_len,
+      macro_exist,
+      macro_source;
+  uint8_t *name_source;
+  int name_source_len;
+  uint8_t *name_dest;
+  int name_dest_len;
+  status_bitap *source_vecset,
+               *dest_vecset;
+  macro_def *old;
+  arg_text_return ret;
+  ret_find_macro ret_macro;
+ 
+  
+  /* first argument is the name of the source macro */
+  ret = argument_text(0, 1);
+  
+  name_source = ret.str_p;
+  
+  name_source_len = ret.length;
+  
+  macro_source_name = str_to_charstr(ret.str_p, ret.length);
+  
+  macro_source_name_len = (charstr[macro_source_name]).data.size;
+  
+  
+  /* second argument is the name of the destination macro */
+  ret = argument_text(0, 2);
+  
+  name_dest = ret.str_p;
+  
+  name_dest_len = ret.length;
+  
+  macro_dest_name = str_to_charstr(ret.str_p, ret.length);
+  
+  macro_dest_name_len = (charstr[macro_dest_name]).data.size;
+  
+  // fprintf(stderr, "copy macro from %.*s to %.*s.\n", name_source_len, name_source, name_dest_len, name_dest);
+    
+  
+  /* vectorset name */
+  /* third argument is the optional vectorset name */
+  ret = argument_text(0, 3);
+  
+  if(ret.length > 0)
+  {
+    source_vecset = find_vectorset(ret.str_p, ret.length);
+    if(source_vecset == NULL)
+    {
+      print_warning(Exit_user, "macro set: %.*s is incorrect. Using default.\n", ret.length, ret.str_p);
+      source_vecset = current_status_bitap;
+    }
+  }
+  else
+  {
+    source_vecset = current_status_bitap;
+  }
+  
+  /* fourth argument is the optional vectorset name */
+  ret = argument_text(0, 4);
+  
+  if(ret.length > 0)
+  {
+    dest_vecset = find_or_new_vectorset(ret.str_p, ret.length);
+  }
+  else
+  {
+    dest_vecset = current_status_bitap;
+  }
+  
+  ret_macro = find_existing_macro(source_vecset, name_source, macro_source_name_len, name_source_len);
+  macro_source = ret_macro.macro_pos;
+  
+  
+  if(macro_source >= 0)
+  {
+    /* source macro exists */
+    
+    if((macro_dest_name_len > 0) && (macro_dest_name_len <= 64))
+    {  
+      /* the length of the macro can fit */
+      
+      if(debug)
+      {
+        printf("\n testing if macro already exists\n");
+      }
+      
+      /* does the macro already exist? */
+      ret_macro = find_existing_macro(dest_vecset, name_dest, macro_dest_name_len, name_dest_len);
+      macro_exist = ret_macro.macro_pos;
+      
+      if(debug)
+      {
+        printf("\n macro already exists place=%i\n", macro_exist);
+      }
+      
+      if(macro_exist >= 0)
+      {
+        /* macro already exists, thus only adapt macro */
+        
+        if(defpush == 0)
+        {
+          /* reserve space for current macro definition and copy */
+          old = xmalloc(sizeof(macro_def));
+          memcpy(old, &(macro_list[macro_exist]), sizeof(macro_def));
+        }
+        else
+        {
+          old = (macro_list[macro_exist]).prev;
+        }
+        
+        
+        /* copy macro */
+        memcpy(&(macro_list[macro_exist]), &(macro_list[macro_source]), sizeof(macro_def));
+        /* copy sds strings */
+        if((macro_list[macro_exist]).def_len >= 0)
+        {
+          (macro_list[macro_exist]).def = sdsnewlen((macro_list[macro_exist]).def, (macro_list[macro_exist]).def_len);
+        }
+        else
+        {
+          (macro_list[macro_exist]).def = sdsnewlen((macro_list[macro_exist]).def, 0);
+        }
+        /* set to previous macro */
+        (macro_list[macro_exist]).prev = old;
+        
+        
+        if(debug)
+        {
+          printf("\n change macro:%s def:%s: place=%i\n", (macro_list[macro_exist]).name, (macro_list[macro_exist]).def, macro_exist);
+        }
+        
+      }
+      else
+      {
+        /* create new macro and entries in vector lists */
+        
+        /* check for enough space in current list */
+        if(end_macro_list >= size_macro_list)
+        {
+          if(debug)
+          {
+            printf("macro list is full! %i %i\n", size_macro_list, end_macro_list);
+          }
+          /* increase the size of the list */
+          macro_list = xrealloc(macro_list, sizeof(macro_def) * (size_macro_list + add_size_macro_list));
+          size_macro_list += add_size_macro_list;
+        }
+        
+        /* copy macro */
+        memcpy(&(macro_list[end_macro_list]), &(macro_list[macro_source]), sizeof(macro_def));
+        /* new name */
+        (macro_list[end_macro_list]).name = sdsnewlen(name_dest, name_dest_len);
+        (macro_list[end_macro_list]).name_len = macro_dest_name_len;
+        /* copy sds strings */
+        if((macro_list[end_macro_list]).def_len >= 0)
+        {
+          (macro_list[end_macro_list]).def = sdsnewlen((macro_list[end_macro_list]).def, (macro_list[end_macro_list]).def_len);
+        }
+        else
+        {
+          (macro_list[end_macro_list]).def = sdsnewlen((macro_list[end_macro_list]).def, 0);
+        }
+        /* reset previous macro */
+        (macro_list[end_macro_list]).prev = NULL;
+        
+        if(debug)
+        {
+          printf("\n add macro:%s def:%s: place=%i\n", (macro_list[end_macro_list]).name, (macro_list[end_macro_list]).def, end_macro_list);
+        }
+        
+                
+        /* add to vector list */
+        if((charstr[macro_dest_name]).data.start == charrstart_fixed)
+        {
+          /* fixed length macro */
+          
+          add_to_vectors2(dest_vecset->vec, macro_dest_name);
+          
+          if(macro_dest_name_len <= 15)
+          {
+            add_to_wordlist2(dest_vecset->word15, macro_dest_name, end_macro_list);
+            
+          }
+          else
+          {
+            add_to_wordlist2(dest_vecset->word64, macro_dest_name, end_macro_list);
+            
+          }
+        }
+        else
+        {
+          /* variable length macro */
+          if(debug)
+          {
+            printf("\n vlm:%s \n", (macro_list[end_macro_list]).name);
+          }
+          
+          if(dest_vecset->patlist == NULL) 
+          {
+            dest_vecset->patlist = init_patternvectors("", 0);  /* should not be found by pattern search */
+          }
+          
+          add_to_patternvector(dest_vecset->patlist, macro_dest_name, end_macro_list, 0, pattern_no_append);
+          
+        }
+        
+        end_macro_list++;
+        
+      }
+    }
+    else
+    {
+      print_warning(Exit_user, "length: %i of macro name: %.*s is incorrect. This macro is thus not defined.\n", macro_dest_name_len, name_dest_len, name_dest);
+      // exit_code = Exit_user; 
+    }
+  }
+  else
+  {
+    /* source macro does not exist */
+    print_warning(Exit_user, "macro name: %.*s for copying does not exist.\n", name_source_len, name_source);
+    // exit_code = Exit_user; 
+  }
+  
+  /* remove macro names from memory */
+  reduce_charstr(macro_source_name);
+}
+
+void push_copy(data_buffer **out)
+{
+
+  copy_macro(0);
+
+}
+
+void define_copy(data_buffer **out)
+{
+
+  copy_macro(1);
+
+}
+
 
 
 void undefpop_macro(int undefpop)
@@ -1315,6 +1795,11 @@ void undefpop_macro(int undefpop)
   if(ret.length > 0)
   {
     vecset = find_vectorset(ret.str_p, ret.length);
+    if(vecset == NULL)
+    {
+      print_warning(Exit_user, "macro set: %.*s is incorrect. Using default.\n", ret.length, ret.str_p);
+      vecset = current_status_bitap;
+    }
   }
   else
   {
@@ -1338,21 +1823,21 @@ void undefpop_macro(int undefpop)
     if(macro_exist >= 0)
     {
       /* macro exists */
-      // printf(" macro exists of course! %i\n", macro_exist);
       if((undefpop == 0) && (macro_list[macro_exist].prev != NULL))
       {
         /* pop*/
-        // printf(" pop it! %i\n", macro_exist);
         prev = (macro_list[macro_exist]).prev;
         sdsfree((macro_list[macro_exist]).def);
+        if((macro_list[macro_exist]).info != NULL)
+        {
+          sdsfree((macro_list[macro_exist]).info);
+        }
         memcpy(&(macro_list[macro_exist]), prev, sizeof(macro_def));
         xfree(prev);
       }
       else
       {
         /* undefine */
-        // printf(" undefine it! %i\n", macro_exist);
-
         prev = (macro_list[macro_exist]).prev;
         
         /* delete macro stack definitions */
@@ -1361,6 +1846,10 @@ void undefpop_macro(int undefpop)
           now = prev;
           prev = prev->prev;
           sdsfree(now->def);
+          if(now->info != NULL)
+          {
+            sdsfree(now->info);
+          }
           xfree(now);
         }
         
@@ -1368,6 +1857,10 @@ void undefpop_macro(int undefpop)
         sdsfree((macro_list[macro_exist]).name);
         (macro_list[macro_exist]).name_len = 0;
         sdsfree((macro_list[macro_exist]).def);
+        if((macro_list[macro_exist]).info != NULL)
+        {
+          sdsfree((macro_list[macro_exist]).info);
+        }
         
         if(ret_macro.wordlist_pos >= 0)
         {
@@ -1382,13 +1875,14 @@ void undefpop_macro(int undefpop)
         
       }
     }
+    else
+    {
+      print_warning(Exit_user, "macro: %.*s does not exist.\n", name_len, name);
+    }
   }
   else
   {
-    fprintf(stderr, "Error line: %i in file: %s line: %i; length: %i of macro name: ", line_counter, current_input_file_buffer->filename, local_line_counter, macro_name_len);
-    fwrite(name, 1, name_len, stderr);
-    fprintf(stderr, " is incorrect. This macro name is not used for undefine or pop.\n ");
-    exit_code = Exit_user; 
+    print_warning(Exit_user, "length: %i of macro name: %.*s is incorrect. This macro name is not used for undefine or pop.\n", macro_name_len, name_len, name);
   }
   
   /* remove macro name from memory */
@@ -1409,6 +1903,97 @@ void undefine_macro(data_buffer **out)
   undefpop_macro(1);
 
 }
+
+
+void set_info(data_buffer **out)
+{
+  int macro_name,
+      macro_name_len,
+      macro_exist,
+      name_len;
+  ret_find_macro ret_macro;
+  arg_text_return ret,
+                  macroset,
+                  info;
+  status_bitap *vecset;
+  uint8_t *name;
+
+  /* first argument is the name of the macro */
+  ret = argument_text(0, 1);
+  
+  name = ret.str_p;
+  
+  name_len = ret.length;
+  
+  macro_name = str_to_charstr(ret.str_p, ret.length);
+  
+  macro_name_len = (charstr[macro_name]).data.size;
+
+  /* second argument is the info */
+  info = argument_text(0, 2);
+ 
+  /* third argument is the optional macro set */
+  macroset = argument_text(0, 3);
+
+  if(macroset.length > 0)
+  {
+    vecset = find_vectorset(macroset.str_p, macroset.length);
+    if(vecset == NULL)
+    {
+      print_warning(Exit_user, "macro set: %.*s is incorrect. Using default.\n", ret.length, ret.str_p);
+      vecset = current_status_bitap;
+    }
+  }
+  else
+  {
+    vecset = current_status_bitap;
+  }
+
+  
+  
+  if(debug)
+  {
+    printf(" set info of macro %.*s %i, %.*s len: %i\n", ret.length, ret.str_p, macro_name, name_len, name, macro_name_len);
+  }
+    
+  if((macro_name_len > 0) && (macro_name_len <= 64))
+  {  
+    /* the length of the macro is correct */
+    
+    /* the macro should already exist */
+    ret_macro = find_existing_macro(vecset, name, macro_name_len, name_len);
+    macro_exist = ret_macro.macro_pos;
+    
+    if(macro_exist >= 0)
+    {
+      if((macro_list[macro_exist]).info != NULL)
+      {
+        (macro_list[macro_exist]).info = sdscpylen((macro_list[macro_exist]).info, info.str_p, info.length);
+      }
+      else
+      {
+        (macro_list[macro_exist]).info = sdsnewlen(info.str_p, info.length);
+      }
+      
+      (macro_list[macro_exist]).info_len = info.length;
+    }
+    else
+    {
+      print_warning(Exit_user, "macro name: %.*s is incorrect. No information can be set.\n", name_len, name);
+    }
+    
+  }
+  else
+  {
+      print_warning(Exit_user, "length: %i of macro name: %.*s is incorrect. No information can be set.\n", macro_name_len, name_len, name);
+  }
+  
+  /* remove macro name from memory */
+  reduce_charstr(macro_name);
+  
+}
+
+
 
 
 void info_macro(data_buffer **out)
@@ -1445,6 +2030,11 @@ void info_macro(data_buffer **out)
   if(macroset.length > 0)
   {
     vecset = find_vectorset(macroset.str_p, macroset.length);
+    if(vecset == NULL)
+    {
+      print_warning(Exit_user, "macro set: %.*s is incorrect. Using default.\n", ret.length, ret.str_p);
+      vecset = current_status_bitap;
+    }
   }
   else
   {
@@ -1566,50 +2156,47 @@ void info_macro(data_buffer **out)
 
       /* arg 9: macro or mcall */
       start = (*out)->position;
-      if((macro_list[macro_exist]).mcallset != NULL)
+      if((macro_list[macro_exist]).info != NULL)
       {
-        /* mcall */
-        putchars_buffer("mcall", 5, out);
+        putchars_buffer((macro_list[macro_exist]).info, (macro_list[macro_exist]).info_len, out);
+
+        set_argument(0, 9, out, start, (macro_list[macro_exist]).info_len);
       }
       else
       {
-        /* builtin */
-        putchars_buffer("macro", 5, out);
+        if((macro_list[macro_exist]).mcallset != NULL)
+        {
+          /* mcall */
+          putchars_buffer("mcall", 5, out);
+        }
+        else
+        {
+          /* builtin */
+          putchars_buffer("macro", 5, out);
+        }
+        
+        set_argument(0, 9, out, start, 5);
       }
       
-      set_argument(0, 9, out, start, 5);
-
-
       
       /* arg 2: definition or called macro */
       /* output of macro is the definition */
       (*out)->start = (*out)->position;
-      // *out = putchars_buffer(variables[var_num_quotestart], sdslen(variables[var_num_quotestart]), *out);
       /* on the stack the definition without quotes */
       start = (*out)->position;
       putchars_buffer((macro_list[macro_exist]).def, (macro_list[macro_exist]).def_len, out);
       set_argument(0, 2, out, start, (macro_list[macro_exist]).def_len);
-
-      // *out = putchars_buffer(variables[var_num_quoteend], sdslen(variables[var_num_quoteend]), *out);
-      
-      
       
     }
     else
     {
-      fprintf(stderr, "Error line: %i in file: %s line: %i; macro name: ", line_counter, current_input_file_buffer->filename, local_line_counter);
-      fwrite(name, 1, name_len, stderr);
-      fprintf(stderr, " is incorrect. No information can be output.\n ");
-      exit_code = Exit_user; 
+      print_warning(Exit_user, "macro name: %.*s is incorrect. No information can be output.\n", name_len, name);
     }
     
   }
   else
   {
-    fprintf(stderr, "Error line: %i in file: %s line: %i; length: %i of macro name: ", line_counter, current_input_file_buffer->filename, local_line_counter, macro_name_len);
-    fwrite(name, 1, name_len, stderr);
-    fprintf(stderr, " is incorrect. No information can be output.\n ");
-    exit_code = Exit_user; 
+      print_warning(Exit_user, "length: %i macro name: %.*s is incorrect. No information can be output.\n", macro_name_len, name_len, name);
   }
   
   /* remove macro name from memory */
@@ -1661,6 +2248,12 @@ void if_macro_exists(data_buffer **out)
   if(ret.length > 0)
   {
     vecset = find_vectorset(ret.str_p, ret.length);
+    if(vecset == NULL)
+    {
+      print_warning(Exit_user, "macro set: %.*s is incorrect. Using default.\n", ret.length, ret.str_p);
+      vecset = current_status_bitap;
+    }
+    
   }
   else
   {
@@ -1698,10 +2291,7 @@ void if_macro_exists(data_buffer **out)
     }   
     else
     {
-      fprintf(stderr, "Error line: %i in file: %s line: %i; length: %i of macro name: ", line_counter, current_input_file_buffer->filename, local_line_counter, macro_name_len);
-      fwrite(name, 1, name_len, stderr);
-      fprintf(stderr, " is incorrect. Can not check if macro is defined.\n ");
-      exit_code = Exit_user;
+      print_warning(Exit_user, "length: %i macro name: %.*s  is incorrect. Can not check if macro is defined.\n", macro_name_len, name_len, name);
     }
   }
 
@@ -1772,10 +2362,7 @@ void define_pattern_chars(data_buffer **out)
   }
   else
   {
-    fprintf(stderr, "Error line: %i in file: %s line: %i; invalid length of string: ", line_counter, current_input_file_buffer->filename, local_line_counter);
-    fwrite(ret.str_p, 1, ret.length, stderr);
-    fprintf(stderr, " to define characters for pattern results in no change.\n");
-    exit_code = Exit_user; 
+    print_warning(Exit_user, "invalid length of string: %.*s to define characters for pattern, this results in no change.\n", ret.length, ret.str_p);
   }
   
   
@@ -1804,30 +2391,41 @@ void define_arg_chars(data_buffer **out)
   /* first argument contains the chars */
   ret = argument_text(0, 1);
 
-
-  /* string should have length 4 or 5 otherwise it is not valid */
-  if(ret.length == 4)
+  num = asciitohex[ret.str_p[0]];
+  if( ((num >= 1) && (num <= 5)) || ((num >= 10) && (num <= 13)) )
   {
-    set_arg_chars(vecset->argchars, ret.str_p[0], ret.str_p[1], ret.str_p[2], ret.str_p[3], '\0');
-
-    add_arg_to_vectors(vecset->vec, vecset->argchars);
+    vecset->num_digits = num;
   }
   else
   {
-    if(ret.length == 5)
+    vecset->num_digits = 1;
+    print_warning(Exit_user, "number of digits is out of range. Using 1.\n");
+  }
+
+ 
+  /* string should have length 5 or 6 otherwise it is not valid */
+  if(ret.length == 5)
+  {
+
+    set_arg_chars(vecset->argchars, ret.str_p[1], ret.str_p[2], ret.str_p[3], ret.str_p[4], '\0');
+
+    add_arg_to_vectors(vecset->vec, vecset->argchars);
+
+  }
+  else
+  {
+    if(ret.length == 6)
     {
-      set_arg_chars(vecset->argchars, ret.str_p[0], ret.str_p[1], ret.str_p[2], ret.str_p[3], ret.str_p[4]);
+      set_arg_chars(vecset->argchars, ret.str_p[1], ret.str_p[2], ret.str_p[3], ret.str_p[4], ret.str_p[5]);
 
       add_arg_to_vectors(vecset->vec, vecset->argchars);
+
     }
 
 
     else
     {
-      fprintf(stderr, "Error line: %i in file: %s line: %i; invalid length of string: ", line_counter, current_input_file_buffer->filename, local_line_counter);
-      fwrite(ret.str_p, 1, ret.length, stderr);
-      fprintf(stderr, " to define characters for arguments results in no change.\n");
-      exit_code = Exit_user;
+      print_warning(Exit_user, "invalid length of string: %.*s to define characters for arguments results in no change.\n", ret.length, ret.str_p); 
     }
   }
   
@@ -1839,8 +2437,7 @@ void define_arg_chars(data_buffer **out)
   }
   else
   {
-    fprintf(stderr, "Error line: %i in file: %s line: %i; variable number: %i is out of range.\n", line_counter, current_input_file_buffer->filename, local_line_counter, num);
-    exit_code = Exit_user;
+    print_warning(Exit_user, "variable number: %i is out of range.\n", num);
   }
 
   /* third arg = variable number for end of quote */
@@ -1851,8 +2448,7 @@ void define_arg_chars(data_buffer **out)
   }
   else
   {
-    fprintf(stderr, "Error line: %i in file: %s line: %i; variable number: %i is out of range.\n", line_counter, current_input_file_buffer->filename, local_line_counter, num);
-    exit_code = Exit_user;
+    print_warning(Exit_user, "variable number: %i is out of range.\n", num);
   }
 
   /* fourth arg = variable number for separator of quote */
@@ -1863,8 +2459,7 @@ void define_arg_chars(data_buffer **out)
   }
   else
   {
-    fprintf(stderr, "Error line: %i in file: %s line: %i; variable number: %i is out of range.\n", line_counter, current_input_file_buffer->filename, local_line_counter, num);
-    exit_code = Exit_user;
+    print_warning(Exit_user, "variable number: %i is out of range.\n", num);
   }
 
 
@@ -1897,7 +2492,7 @@ void exec_command(data_buffer **out)
   io = popen(command, "r");
   if (io == NULL)
   {
-    fprintf(stderr, "Error line: %i in file: %s line: %i; could not execute: %s; %s\n", line_counter, current_input_file_buffer->filename, local_line_counter, command, strerror(errno));
+    print_warning(Exit_io, "could not execute: %s; %s\n", command, strerror(errno));
     exit(Exit_io);
   }
   
@@ -1955,14 +2550,14 @@ void tempfile(data_buffer **out)
   
   if (filetemp < 0)
   {
-    fprintf(stderr, "Error line: %i in file: %s line: %i; can not create temporary file: %s: %s.\n",line_counter, current_input_file_buffer->filename, local_line_counter, template, strerror(errno));
+    print_warning(Exit_io, "can not create temporary file: %s: %s.\n", template, strerror(errno));
     exit(Exit_io);
   }
   else
   {
     if(close(filetemp) < 0)
     {
-      fprintf(stderr, "Error closing file: %s: %s.\n", template, strerror(errno));
+      print_warning(Exit_io, "Error closing file: %s: %s.\n", template, strerror(errno));
       exit(Exit_io);
     }
 
@@ -1978,9 +2573,6 @@ void include_file_ornot(data_buffer **out, int silent)
 {
   arg_text_return ret;
   sds filename;
-  // int filedesc,
-  // filesize,
-  // read_bytes;
   
   /* first argument contains the filename */
   ret = argument_text(0, 1);
@@ -1990,7 +2582,6 @@ void include_file_ornot(data_buffer **out, int silent)
   if(ret.length > 0)
   {
     filename = sdsnewlen(ret.str_p, ret.length);
-    // fprintf(stderr," input file: %s\n",filename);
     
     /* open the input file */
     if(open_input_silent(filename, *out, silent) == 0)
@@ -2009,8 +2600,6 @@ void include_file_ornot(data_buffer **out, int silent)
       (*out)->prev = current_input_file_buffer;
       current_input_file_buffer = *out;
       
-    // fprintf(stderr," input file read: %s %p\n",filename, *out);
-      
     }
     /* else no input file */
     
@@ -2019,8 +2608,7 @@ void include_file_ornot(data_buffer **out, int silent)
   {
     if(silent == 0)
     {
-      fprintf(stderr, "Error line: %i in file: %s line: %i; no filename for include file.\n", line_counter, current_input_file_buffer->filename, local_line_counter);
-      exit_code = Exit_user;
+      print_warning(Exit_user, "no filename for include file.\n");
     }
   }
   
@@ -2084,8 +2672,8 @@ void include_file_ornot2(data_buffer **out, int silent)
   {
     if(silent == 0)
     {
-      fprintf(stderr, "Error line: %i in file: %s line: %i; no filename for include file.\n", line_counter, current_input_file_buffer->filename, local_line_counter);
-      exit_code = Exit_user;
+      print_warning(Exit_user, "no filename for include file.\n");
+      // exit_code = Exit_user;
     }
   }
 
@@ -2245,11 +2833,13 @@ void set_var(data_buffer **out)
 
     if(variables[ret] != NULL)
     {
-      sdsfree(variables[ret]);
+      variables[ret] = sdscpylen(variables[ret], retstr.str_p, retstr.length);
     }
-
-    variables[ret] = sdsnewlen(retstr.str_p, retstr.length);
-
+    else
+    {
+      variables[ret] = sdsnewlen(retstr.str_p, retstr.length);
+    }
+    
     if(debug)
     {
       printf(" defined variable: %lli as: %s\n", ret, variables[ret]);
@@ -2257,8 +2847,7 @@ void set_var(data_buffer **out)
   }
   else
   {
-    fprintf(stderr, "Error line: %i in file: %s line: %i; variable number: %lli is out of range.\n", line_counter, current_input_file_buffer->filename, local_line_counter, ret);
-    exit_code = Exit_user;
+    print_warning(Exit_user, "variable number: %lli is out of range.\n", ret);
   }
 
 }
@@ -2286,7 +2875,7 @@ void get_var(data_buffer **out)
   else
   {
     /* using negative numbers for specific data from the program, process or environment */
-    if((ret < 0) && (ret >= -8))
+    if((ret < 0) && (ret >= -9))
     {
       switch(ret)
       {
@@ -2324,7 +2913,7 @@ void get_var(data_buffer **out)
           /* program options after -- */
           putchars_buffer(arg_options, strlen(arg_options), out);
           break;
-        case -8:
+        case -9:
           /* the return value of an executed shell command */
           value = sdsfromlonglong((long long int) sysreturn);
           putchars_buffer(value, sdslen(value), out);
@@ -2334,8 +2923,7 @@ void get_var(data_buffer **out)
     }
     else
     {
-      fprintf(stderr, "Error line: %i in file: %s line: %i; variable number: %lli is out of range.\n", line_counter, current_input_file_buffer->filename, local_line_counter, ret);
-      exit_code = Exit_user;
+      print_warning(Exit_user, "variable number: %lli is out of range.\n", ret);
     }
   }
 }
@@ -2379,17 +2967,33 @@ void string_index(data_buffer **out)
 void num_to_char(data_buffer **out)
 {
   long long int num;
+  int num_numbers,
+      i;
   uint8_t character;
 
-  num = argument_num(0, 1);
+  num_numbers = current_status_pattern->num_of_args;
 
-  if((num >= 0ll) && (num <= 255ll))
+  set_argument(0, 2, out, (*out)->position, num_numbers);
+  
+  for(i = 0; i < num_numbers; i++)
   {
-    character = (uint8_t) num;
-    set_argument(0, 2, out, (*out)->position, 1);
-    putchar_buffer(character, out);
+    
+    num = argument_num(0, i + 1);
+    
+    if((num >= 0ll) && (num <= 255ll))
+    {
+      character = (uint8_t) num;
+      putchar_buffer(character, out);
+    }
+    else
+    {
+      print_warning(Exit_user, "number: %lli for character is out of range. Output is space.\n", num);
+      putchar_buffer(' ', out);
+      
+      
+    }
   }
-
+  
 }
 
 
@@ -2711,15 +3315,14 @@ void number_to_string(data_buffer **out)
   {
     if((radix < 2) || (radix > 36))
     {      
-      fprintf(stderr, "Error line: %i in file: %s line: %i; radix: %lli is out of range.\n", line_counter, current_input_file_buffer->filename, local_line_counter, radix);
-      exit_code = Exit_user;
+      print_warning(Exit_user, "radix: %lli is out of range.\n", radix);
+      // exit_code = Exit_user;
     }
     if(width < 0)
     {      
-      fprintf(stderr, "Error line: %i in file: %s line: %i; width: %lli is negative.\n", line_counter, current_input_file_buffer->filename, local_line_counter, width);
-      exit_code = Exit_user;
+      print_warning(Exit_user, "width: %lli is negative.\n", width);
+      // exit_code = Exit_user;
     }
   }
   
 }
-  

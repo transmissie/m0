@@ -41,6 +41,8 @@ typedef struct macro_def
       post_size;    /* number of characters of the end of the macro name to return to input */
   sds def;          /* the definition string */
   int def_len;      /* the length of the definition */
+  sds info;          /* the information string */
+  int info_len;      /* the length of the info string */
   pattern_data *arglist;  /* pointer to the pattern vectors to be used for the argument */
   pattern_data *filllist;  /* pointer to the pattern vectors to be used for fill of definition */
   status_bitap *mcallset;  /* pointer to a vector set used by macro call */
@@ -172,6 +174,14 @@ int reduce_charstr(int);
 
 int str_to_charstr(uint8_t *, int);
 
+int find_internal(uint8_t *, int);
+
+int macro_num(uint8_t *, int, uint8_t *, int);
+
+sds macro_infos(int, int, sds);
+
+/* builtin functions */
+
 void add_pattern(data_buffer **);
 
 void append_pattern(data_buffer **);
@@ -179,6 +189,8 @@ void append_pattern(data_buffer **);
 void clear_pattern(data_buffer **);
 
 void copy_pattern(data_buffer **);
+
+void add_program(data_buffer **);
 
 void push_macro(data_buffer **);
 
@@ -188,9 +200,15 @@ void def_macrocall(data_buffer **);
 
 void push_macrocall(data_buffer **);
 
+void push_copy(data_buffer **);
+
+void define_copy(data_buffer **);
+
 void pop_macro(data_buffer **);
 
 void undefine_macro(data_buffer **);
+
+void set_info(data_buffer **);
 
 void info_macro(data_buffer **);
 

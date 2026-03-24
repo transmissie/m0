@@ -19,12 +19,18 @@
 AM_DISTCHECK_DVI_TARGET = pdf
 
 info_TEXINFOS = m0.texi m0algo.texi
-m0_TEXINFOS = fdl-1.3.texi gpl-3.0.texi sds.texi chap_builtin.texi chap_programs.texi m4emu.texi
+m0_TEXINFOS = fdl-1.3.texi gpl-3.0.texi sds.texi chap_builtin.texi chap_programs.texi m4emu.texi m6emu.texi gpmemu.texi
 m0algo_TEXINFOS = fdl-1.3.texi gpl-3.0.texi
-AM_MAKEINFOHTMLFLAGS = --set-customization-variable SPLIT=chapter
+AM_MAKEINFOHTMLFLAGS = --set-customization-variable SPLIT=chapter --css-ref=/manual.css
 
 m4emu.texi: $(builddir)/../emu/m4emu.texi
 	cp $(builddir)/../emu/m4emu.texi .
+
+m6emu.texi: $(builddir)/../emu/m6emu.texi
+	cp $(builddir)/../emu/m6emu.texi .
+
+gpmemu.texi: $(builddir)/../emu/gpmemu.texi
+	cp $(builddir)/../emu/gpmemu.texi .
 
 
 man_MANS = $(srcdir)/m0.1

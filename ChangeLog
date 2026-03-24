@@ -11,3 +11,15 @@
 	* m0: Variable length macros (vlm) are available.
 	* m0: Several bug fixes and checks added.
 	* doc: Updated manual for vlm.
+
+24-3-2026   Marco de Beurs
+
+	version 0.3
+	
+	* m0: Instructions and functions added.
+	* m0: Macros have extra info field.
+	* m0: Stack functionality extended for info between macros.
+	* m0: Default argument collection can have multiple digits to select argument.
+	* emu: Complete emulation examples of m6 and gpm added.
+	* emu: M4 emulation example extended for compatibility. 
+	* doc: Updated manual and algorithm document.

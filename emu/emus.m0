@@ -25,7 +25,7 @@ END
 1_specialchar:,;@3b
 
 1_chars_pattern:[]-\@+*?~
-1_chars_args:$*@#$;101;102;103
+1_chars_args:1$*@#$;101;102;103
 
 1_set_var:101;`
 1_set_var:102;'

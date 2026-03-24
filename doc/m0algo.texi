@@ -2,7 +2,7 @@
 @comment ========================================================
 @comment %**start of header
 @setfilename m0algo.info
-@set UPDATED 30 December 2025
+@set UPDATED 2 March 2026
 @settitle Bitap algorithms used in M0
 @documentencoding UTF-8
 @set txicodequoteundirected
@@ -44,7 +44,7 @@
 This document is for use with M0, a package containing an implementation of the m0 macro
 language.
 
-Copyright @copyright{} 2025 Marco de Beurs
+Copyright @copyright{} 2025, 2026 Marco de Beurs
 
 
 @quotation
@@ -57,10 +57,6 @@ entitled ``GNU Free Documentation License.''
 @end quotation
 @end copying
 
-@dircategory Text creation and manipulation
-@direntry
-* M0: (m0).                     A flexible macro processor.
-@end direntry
 
 @titlepage
 @title Bitap algorithms used in M0
@@ -505,7 +501,7 @@ Till so far @code{m0} uses only the small-15 choice.
 
 
 @node Bitap for patterns in m0
-@chapter Bitap for patterns in @code{m0}
+@chapter Bitap for patterns and variable length macros in @code{m0}
 
 The patterns used in @code{m0} are normally not large and can fit easily in one cpu word.
 Therefore the horizontal bitap is sufficient for use in the patterns. The horizontal
@@ -697,6 +693,15 @@ bitap as described till so far.
 
 At this moment it is however not (yet) implemented in @code{m0}.
 
+
+@section Variable length macros
+
+The variable length macros in @code{m0} use the same bitap algorithm as
+the patterns. This enables the variable length macros and gives these
+macros the same possibilities as the patterns.
+
+It is expected that not too much variable length macros are normally used and that 
+therefore the number of cpu words that is needed is limited.
 
 
 @bye

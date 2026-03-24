@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Marco de Beurs
+ * Copyright 2025, 2026 Marco de Beurs
  * 
  * This file is part of m0.
  * 
@@ -29,7 +29,8 @@ typedef enum
 {
     arg_continu,
     arg_stop,
-    arg_abort
+    arg_abort,
+    arg_no_macros
 } arg_status;
 
 typedef struct
@@ -45,12 +46,16 @@ typedef struct
 extern int size_program_list,
            end_program_list;
 
+/* used by processor.c */
+extern int macro_depth;
 
 void init_program_list(void);
 
 void init_stacks(void);
 
 void init_asciitoradix(void);
+
+void add_to_programs(uint8_t *, int, int);
 
 void start_local_stacks(void);
 
@@ -82,7 +87,11 @@ int st_pop_to(int, int, status_pattern *, data_buffer **, arg_run *);
 
 int st_dup(int, int, status_pattern *, data_buffer **, arg_run *);
 
+int st_swap(int, int, status_pattern *, data_buffer **, arg_run *);
+
 int st_copy(int, int, status_pattern *, data_buffer **, arg_run *);
+
+int st_copyfrom(int, int, status_pattern *, data_buffer **, arg_run *);
 
 int st_get_arg(int, int, status_pattern *, data_buffer **, arg_run *);
 
@@ -98,6 +107,8 @@ int st_replace_out_start(int, int, status_pattern *, data_buffer **, arg_run *);
 
 int st_push_toarg(int, int, status_pattern *, data_buffer **, arg_run *);
 
+int st_push_toarg_num(int, int, status_pattern *, data_buffer **, arg_run *);
+
 int st_pushvar(int, int, status_pattern *, data_buffer **, arg_run *);
 
 int st_beginarg(int, int, status_pattern *, data_buffer **, arg_run *);
@@ -107,6 +118,8 @@ int st_endarg(int, int, status_pattern *, data_buffer **, arg_run *);
 int st_argposition(int, int, status_pattern *, data_buffer **, arg_run *);
 
 int st_argnumber(int, int, status_pattern *, data_buffer **, arg_run *);
+
+int st_macro_depth(int, int, status_pattern *, data_buffer **, arg_run *);
 
 int st_overrule(int, int, status_pattern *, data_buffer **, arg_run *);
 
@@ -129,6 +142,10 @@ int st_compare_number(int, int, status_pattern *, data_buffer **, arg_run *);
 int st_if(int, int, status_pattern *, data_buffer **, arg_run *);
 
 int st_else(int, int, status_pattern *, data_buffer **, arg_run *);
+
+int st_while(int, int, status_pattern *, data_buffer **, arg_run *);
+
+int st_endwhile(int, int, status_pattern *, data_buffer **, arg_run *);
 
 int st_add(int, int, status_pattern *, data_buffer **, arg_run *);
 
@@ -174,8 +191,20 @@ int st_op_stack_ex_to(int, int, status_pattern *, data_buffer **, arg_run *);
 
 int st_op_stack_push(int, int, status_pattern *, data_buffer **, arg_run *);
 
+int st_funtion_call(int, int, status_pattern *, data_buffer **, arg_run *);
+
+int st_no_macro_exec(int, int, status_pattern *, data_buffer **, arg_run *);
+
+int st_set_stack_free(int, int, status_pattern *, data_buffer **, arg_run *);
+
+int st_subroutine(int, int, status_pattern *, data_buffer **, arg_run *);
+
+int st_macro_num(int, int, status_pattern *, data_buffer **, arg_run *);
+
+int st_macroinfo(int, int, status_pattern *, data_buffer **, arg_run *);
 
 arg_run exec_program(int, int, status_pattern *, data_buffer **);
 
 void print_program(int, data_buffer **);
 
+sds sds_print_program(sds, int);

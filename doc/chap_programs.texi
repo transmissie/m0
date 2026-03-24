@@ -6,7 +6,7 @@ executed when a pattern or macro is found.
 
 The programming environment is forth like with stacks to be used for variables and forth like instructions.
 
-Every macro starts its own stack environment for the collection of the arguments. It is thus not possible
+Every macro starts its own stack environment for the collection of the arguments. It is thus normally not possible
 to transfer information between macros through the stack.
 
 
@@ -65,11 +65,22 @@ that holds the name of the macro.
 The stacks are not cleared between the different possible patterns executed
 inside a macro.
 
-At the end of the macro execution the stacks are deleted.
+At the end of the macro execution the stacks are deleted, except if a
+special instruction is used (see @ref{Manipulation of stacks}).
+
+
+@node Programs
+@section Programs
+
+Programs are a sequence of instructions, data or calls to other programs.
+
+An instruction, a piece of data or a call are all single words separated by
+one or multiple spaces or newlines (@code{\n}).
+If a word is not one of these, an error is output.
 
 
 @node Data types
-@section Data types
+@subsection Data types
 
 There are 2 types of data that are placed on the stack:
 
@@ -77,16 +88,69 @@ There are 2 types of data that are placed on the stack:
 @item Strings
 
 Strings are formed by one or more bytes. A string can be put on the top of a stack by enclosing the string in @code{"}.
+An example:
+@example
+@verbatim
+
+"Hello world"
+   
+@end verbatim
+@end example
+
+puts the the string @code{Hello world} on the stack. 
 
 @item Numbers
 
 Numbers are signed integers with a length of 64 bits. A number can be put on the top of the stack by only using digits (@code{0 - 9}) with a possible @code{-} for negative numbers in the program.
+An example:
+@example
+@verbatim
+
+10 -100
+   
+@end verbatim
+@end example
+
+puts the number 10 and the number -100 on the stack.
+
 @end table
 
 These types are automatically converted depending on the instructions used.
 A string can contain a decimal, binary (starts with @code{0b}), octal (starts with @code{0}), hexadecimal (starts with @code{0x}) or radix number (starts with @code{0r} a number between 2 - 36 and @code{:}).
 A number will be converted to a decimal number string.
 
+
+@node Instructions
+@subsection Instructions
+
+If a word is not data or a call, it is assumed to represent an instruction.
+
+All possible instructions are described in the following parts.
+
+It is not possible to define
+own instructions like in a real forth language.
+Instead a call to a program can be used.
+
+
+@node Call to a program
+@subsection Call to a program
+
+A separate program can be defined by using the function @code{program} (see @ref{Functions for defining patterns}). The name
+used in the definition of the program can be used to call the program from another
+program.
+
+The call of a program starts with the character @code{@@} and is directly 
+without a space followed by the name given to the program. 
+An example:
+@example
+@verbatim
+
+@hello
+   
+@end verbatim
+@end example
+
+will call the program with name @code{hello}. 
 
 @node Selecting a stack
 @section Selecting a stack
@@ -134,6 +198,15 @@ push: 0
 
 @end defvr
 
+@defvr instruction swap
+Swaps the top entry and the top - 1 entry of the active stack.
+
+pop: 0
+
+push: 0
+@end defvr
+
+
 @defvr instruction set_base
 Sets the base of stack a to the value on the top of the stack.
 The base is used as the bottom when multiple arguments are output in the default argument
@@ -167,6 +240,15 @@ pop: 0
 push: 1
 @end defvr
 
+@defvr instruction copyfr_?
+Copy the top entry from another stack to the top of the active stack. The @code{?} can be a letter from @code{a - h} representing stacks a to h.
+
+pop: 0
+
+push: 1
+@end defvr
+
+
 @defvr instruction putarg?
 Copy the top entry of the active stack to position @code{?} of stack @code{a} where the arguments are stored. The @code{?} can be a number 
 from @code{0 - 9} representing the name of the macro (position @code{0}) and the first 9 arguments (positions @code{1 - 9}).
@@ -175,6 +257,16 @@ pop: 0
 
 push: 0
 @end defvr
+
+
+@defvr instruction putarg
+Copy the top - 1 entry of the active stack to the position given by the top of the active stack of stack @code{a}.
+
+pop: 1
+
+push: 0
+@end defvr
+
 
 @defvr instruction getarg?
 Copy the entry at position @code{?} of stack @code{a} to the top entry of the active stack. The @code{?} can be a number 
@@ -291,6 +383,33 @@ push: 0
 @end defvr
 
 
+@defvr instruction while
+Pops the top of the stack and continues to the next instruction if @code{true} or skips
+to the instruction after the @code{endwhile} instruction if @code{false}.
+
+pop: 1
+
+push: 0
+@end defvr
+
+@defvr instruction while_st
+Continues to the next instruction if the stack is not empty or skips
+to the instruction after the @code{endwhile} instruction if the stack is empty.
+
+pop: 0
+
+push: 0
+@end defvr
+
+@defvr instruction endwhile
+Returns to the @code{while} or @code{while_st} instruction.
+
+pop: 0
+
+push: 0
+@end defvr
+
+
 @defvr instruction nop
 No operation. Does nothing.
 
@@ -323,6 +442,15 @@ pop: 0
 push: 1
 @end defvr
 
+@defvr instruction  m_depth
+Pushes the current depth of macro calls to the stack.
+Since the programs always run inside a macro, this should be at least 1.
+This is already available in the argument collection. 
+
+pop: 0
+
+push: 1
+@end defvr
 
 @node Comparing values
 @section Comparing values
@@ -760,7 +888,7 @@ push: 0
 @node Instructions for overruling macro settings
 @section Instructions for overruling macro settings
 
-The following instructions are meant to set the recursion of output the
+The following instructions are meant to set the recursion of output of the
 calling macro (the @code{mcall}) by the called macro.
 
 @defvr instruction recur_y
@@ -795,6 +923,27 @@ push: 0
 
 @end defvr
 
+The following instructions are only useful to influence the recursion 
+during the collection of arguments.
+
+@defvr instruction no_macro
+
+When a program uses this instruction, no macros are called anymore during
+the collection of arguments. 
+
+Normally only useful for very specific
+cases in emulation. It is used in the @code{m6} emulation for specific
+handling of argument collection with macros that select the following
+text in a definition text.
+
+Outside of the collection of arguments this instruction will have
+no influence.
+
+pop: 0
+
+push: 0
+
+@end defvr
 
 
 @node Operator stack instructions
@@ -867,7 +1016,185 @@ push: 0
 @end defvr
 
 @defvr instruction oppush
-Pushes the the instruction after the @code{oppush} on the instruction stack.
+Pushes the the instruction after the @code{oppush} on the instruction stack with the rank
+gotten from the top of the stack.
+
+pop: 1
+
+push: 0
+@end defvr
+
+
+@node Getting macro information
+@section Getting macro information
+
+With the following instructions it is possible to get all the information of macros.
+
+Macros are placed in a list and are retrieved from this list by an internal number.
+The internal number used in these instructions is 1 or larger for a valid macro.
+
+@defvr instruction m?_num
+
+Returns the internal number of a macro. The stack should hold:
+@table @asis
+@item top
+macro set where the macro is defined.
+@item top - 1
+name of the macro.
+@end table
+
+If the macro does not exist, the returned number is 0.
+
+pop: 2
+
+push: 1
+@end defvr
+
+
+@defvr instruction m?_name
+
+Returns the name of a macro. The top of the stack should hold the internal number.
+
+pop: 1
+
+push: 1
+@end defvr
+
+
+@defvr instruction m?_def
+
+Returns the definition of a macro. The top of the stack should hold the internal number.
+
+pop: 1
+
+push: 1
+@end defvr
+
+
+@defvr instruction m?_int
+
+Returns the builtin function of a macro or the macro name of an @code{mcall}. The top of the stack should hold the internal number.
+
+pop: 1
+
+push: 1
+@end defvr
+
+
+@defvr instruction m?_opt
+
+Returns the options of a macro. The top of the stack should hold the internal number.
+
+pop: 1
+
+push: 1
+@end defvr
+
+
+@defvr instruction m?_col_p
+
+Returns the name of the pattern for the collection of arguments. The top of the stack should hold the internal number.
+
+pop: 1
+
+push: 1
+@end defvr
+
+
+@defvr instruction m?_sub_p
+
+Returns the name of the pattern for the substitution of arguments. The top of the stack should hold the internal number.
+
+pop: 1
+
+push: 1
+@end defvr
+
+
+@defvr instruction m?_prog
+
+Returns the program of a macro. The top of the stack should hold the internal number.
+
+pop: 1
+
+push: 1
+@end defvr
+
+
+@defvr instruction m?_info
+
+Returns the information field of a macro. The top of the stack should hold the internal number.
+
+pop: 1
+
+push: 1
+@end defvr
+
+
+@defvr instruction m?_type
+
+Returns the macro type: @code{macro} or @code{mcall}. The top of the stack should hold the internal number.
+
+pop: 1
+
+push: 1
+@end defvr
+
+
+
+@node Calling a builtin function
+@section Calling a builtin function
+
+With the following instruction it is possible to make a macro wherein the
+builtin executed is dependent on arguments of the function.
+
+This can be useful in an emulation to adapt the macro to specialities
+of the emulated macro.
+
+@defvr instruction fun_call
+The function call will call the builtin function with the name found on the top of the stack.
+
+If the name does not exist, an error is output.
+
+The function will be immediately called, so the arguments on stack a should already be correct.
+It is possible to call multiple builtin functions in one macro.
+
+pop: 1
+
+push: 0
+@end defvr
+
+
+@node Manipulation of stacks
+@section Manipulation of stacks
+
+Normally the stacks are created at the start of a macro and removed or made free 
+at the end of a macro. The following instructions manipulate this behaviour.
+
+These instructions make the exchange of information between macros possible. 
+This can be useful in an emulation.
+
+
+@defvr instruction free_no
+
+This instruction sets the active stack to not be made free or removed at the end of
+the macro.
+
+The stack of a macro can get additional entries from macros that
+are later called if these later called macros use this instruction.
+This means that macros called during the argument collection can push entries on a stack of
+the currently executing macro.
+
+pop: 0
+
+push: 0
+@end defvr
+
+
+@defvr instruction free_yes
+
+This instruction sets the active stack to the default of being freed or removed at the end of
+the macro.
 
 pop: 0
 
