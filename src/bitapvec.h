@@ -69,19 +69,34 @@ extern wordlist (*current_word64);
 
 typedef uint64_t pattern_vectors[][size_index]; /* bitap vectors */
 
+
+
+/* the patterns */
+
+/* masks for the linking of pattern parts */
+typedef struct pattern_links
+{
+  int       size;
+  uint64_t  linkpat[];
+} pattern_links;
+
+/* the masks of a pattern */
 typedef struct pattern_masks
 {
   uint64_t init,                               /* initial mask */
+           clearinit,                          /* initial mask to clear result */
            mask,                               /* mask to check result */
            starmask,                           /* mask for one or more in one position */
            zeromask;                           /* mask for zero (used together with one or more) in one position */
   uint64_t masks[pattern_size_masks];          /* masks to check individual results */ 
+  pattern_links *links[pattern_size_masks];    /* pointers to the linking masks */                        
   int masks_end;                               /* first free mask */
   int masks_run[pattern_size_masks];           /* index to run pattern program or macro */
   int masks_run_patlen[pattern_size_masks];    /* length of the pattern string; negative length means a one time trigger */
   int masks_run_level[pattern_size_masks];     /* level of pattern program */
 } pattern_masks;
 
+/* structure holding all the data of a pattern */
 typedef struct pattern_data
 {
   pattern_vectors (*vec);        /* bitap vectors */
@@ -94,6 +109,7 @@ typedef struct pattern_data
 
 extern pattern_data *arglist,
                     *arglast;
+
 
 
 typedef enum
@@ -132,6 +148,7 @@ typedef struct
 
 extern argument_chars *current_arg_chars;
 
+/* structure holding all the data of a macro set */
 typedef struct status_bitap
 {
   vectors  *vec;             /* the bitap vectors */
@@ -195,6 +212,14 @@ void clear_patternvector(pattern_data (*vec), int);
 void copy_patternvector(pattern_data (*vec_from), pattern_data (*vec_to));
 
 void add_to_patternvector(pattern_data (*vec), int, int, int, pattern_append_option);
+
+void link_patterns(int tag_from, int tag_to);
+
+int find_in_taglist(uint8_t *name, int len);
+
+int find_in_taglist_w_pat(pattern_data (*pat_dat), uint8_t *name, int len);
+
+void add_to_taglist(pattern_data (*pat_dat), uint8_t *name, int len);
 
 void add_arg_to_vectors(vectors (*vec), argument_chars *);
 

@@ -36,13 +36,21 @@ void putchar_buffer(uint8_t, data_buffer **);
 
 void flush_diversion(int, data_buffer **);
 
+void output_diversion(int, data_buffer **);
+
 void flush_all_diversions(data_buffer **);
 
 void write_in_at_last(uint8_t *, int);
 
+void write_in_at_first(uint8_t *, int);
+
 void write_output(data_buffer **, int);
 
 void flush_output(data_buffer **);
+
+void open_output(char *, data_buffer *);
+
+void close_output(data_buffer **);
 
 void open_trace(char *);
 

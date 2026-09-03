@@ -119,6 +119,7 @@ typedef union
   uint64_t n64;
 } command_name;
 
+
 typedef struct
 {
   command_name name;
@@ -143,6 +144,7 @@ const command_entry command_list[] =
   {{"pop     "}, &st_pop, 0},
   {{"dup     "}, &st_dup, 0},
   {{"swap    "}, &st_swap, 0},
+  {{"swap-12 "}, &st_swap12, 0},
   {{"pop_to_0"}, &st_pop_to, 0},
   {{"pop_to_1"}, &st_pop_to, 1},
   {{"pop_to_2"}, &st_pop_to, 2},
@@ -249,14 +251,17 @@ const command_entry command_list[] =
   {{"getarg8 "}, &st_get_arg, 8},
   {{"getarg9 "}, &st_get_arg, 9},
   {{"get_st  "}, &st_get_from_out_opt, 0},
-  {{"get_st+1"}, &st_get_from_out_opt, -1},
-  {{"get_st+2"}, &st_get_from_out_opt, -2},
-  {{"get_st+3"}, &st_get_from_out_opt, -3},
-  {{"getlast1"}, &st_get_from_out_opt, 1},
-  {{"getlast2"}, &st_get_from_out_opt, 2},
-  {{"getlast3"}, &st_get_from_out_opt, 3},
-  {{"getlast4"}, &st_get_from_out_opt, 4},
-  {{"getlast5"}, &st_get_from_out_opt, 5},
+  {{"get_st-1"}, &st_get_from_out_opt, -1},
+  {{"get_st-2"}, &st_get_from_out_opt, -2},
+  {{"get_st-3"}, &st_get_from_out_opt, -3},
+  {{"get_st+1"}, &st_get_from_out_opt_last, -1},
+  {{"get_st+2"}, &st_get_from_out_opt_last, -2},
+  {{"get_st+3"}, &st_get_from_out_opt_last, -3},
+  {{"getlast1"}, &st_get_from_out_opt_last, 1},
+  {{"getlast2"}, &st_get_from_out_opt_last, 2},
+  {{"getlast3"}, &st_get_from_out_opt_last, 3},
+  {{"getlast4"}, &st_get_from_out_opt_last, 4},
+  {{"getlast5"}, &st_get_from_out_opt_last, 5},
   {{"putoutst"}, &st_replace_out_start, 0},
   {{"putout  "}, &st_replace_out, 0},
   {{"putout-0"}, &st_replace_out_opt, 0},
@@ -265,6 +270,7 @@ const command_entry command_list[] =
   {{"putout-3"}, &st_replace_out_opt, 3},
   {{"putout-4"}, &st_replace_out_opt, 4},
   {{"putout-5"}, &st_replace_out_opt, 5},
+  {{"endbegin"}, &st_end_begin, 0},
   {{"copyto_a"}, &st_copy, 0},
   {{"copyto_b"}, &st_copy, 1},
   {{"copyto_c"}, &st_copy, 2},
@@ -282,6 +288,7 @@ const command_entry command_list[] =
   {{"copyfr_g"}, &st_copyfrom, 6},
   {{"copyfr_h"}, &st_copyfrom, 7},
   {{"cat     "}, &st_cat, 0},
+  {{"cat-1   "}, &st_cat, 1},
   {{"strlen  "}, &st_strlen, 0},
   {{"str*    "}, &st_str_multiply, 0},
   {{"set_base"}, &st_setbase, 0},
@@ -303,6 +310,13 @@ const command_entry command_list[] =
   {{"m?_prog "}, &st_macroinfo, 7},
   {{"m?_info "}, &st_macroinfo, 9},
   {{"m?_type "}, &st_macroinfo, 10},
+  {{"cnt_get "}, &st_cnt_get, 0},
+  {{"cnt_set "}, &st_cnt_set, 0},
+  {{"cnt++   "}, &st_cnt_incr, 0},
+  {{"cnt--   "}, &st_cnt_decr, 0},
+  {{"cnt_clr "}, &st_cnt_clr, 0},
+  {{"goback1 "}, &st_go_back, 1},
+  {{"goback2 "}, &st_go_back, 2},
 };
 
 
@@ -333,7 +347,10 @@ names_of_programs *programs = NULL;
 int size_programs = 0,
     end_programs = 0;
 
-    
+
+long long int counters[max_number_counters];
+
+
 int empty_string_on_stack;
 
 /* var for the depth of the current macro
@@ -384,6 +401,29 @@ void init_asciitoradix(void)
     asciitoradix['A' - 10 + i] = i;
   }
  
+}
+
+void print_stack(int stnum)
+{
+  stack *st;
+  arg_text_return ret;
+  int i;
+  
+  if((stnum < 0) || (stnum >= number_of_default_stacks))
+  {
+    print_warning(Exit_internal, "Internal error; trying to use stack: %i, using stack 0.\n", stnum);
+    // exit_code = Exit_internal; 
+    stnum = 0;
+  }
+
+  st = default_st[stnum];
+
+  for(i = 0; i < st->stack_end; i++)
+  {
+    ret = argument_text(stnum, i - st_status->start[stnum]);
+
+    printf(" stack num: %i,  string = %.*s, len= %i  str p: %p\n", i, ret.length, ret.str_p, ret.length, ret.str_p);
+  }
 }
 
 
@@ -788,7 +828,6 @@ void pop_stack(int stnum)
   if((stnum < 0) || (stnum >= number_of_default_stacks))
   {
     print_warning(Exit_internal, "Internal error; trying to use stack: %i, using stack 0.\n", stnum);
-    // exit_code = Exit_internal; 
     stnum = 0;
   }
 
@@ -1383,6 +1422,9 @@ void swap_on_stack(int first_pos, int second_pos, int stnum)
   st->st[second_pos].start = temp.start;
   st->st[second_pos].value.str = temp.value.str;
 
+  // printf(" swapping stack: %i,  %i and %i\n", stnum, first_pos, second_pos); 
+
+  // print_stack(stnum);
 }
 
 
@@ -1538,29 +1580,6 @@ int execute_op(int stnum, int program_counter, status_pattern *status, data_buff
 }
 
 
-void print_stack(int stnum)
-{
-  stack *st;
-  arg_text_return ret;
-  int i;
-  
-  if((stnum < 0) || (stnum >= number_of_default_stacks))
-  {
-    print_warning(Exit_internal, "Internal error; trying to use stack: %i, using stack 0.\n", stnum);
-    // exit_code = Exit_internal; 
-    stnum = 0;
-  }
-
-  st = default_st[stnum];
-
-  for(i = 0; i < st->stack_end; i++)
-  {
-    ret = argument_text(stnum, i - st_status->start[stnum]);
-
-    printf(" stack num: %i,  string = %.*s, len= %i\n", i, ret.length, ret.str_p, ret.length);
-  }
-}
-
 
 /* instructions for the program 
  * 
@@ -1640,16 +1659,37 @@ int st_swap(int option, int program_counter, status_pattern *status, data_buffer
 {
   if(default_st[st_status->active_stack]->stack_end > (st_status->start[st_status->active_stack] + 1))
   {
-    swap_on_stack(default_st[st_status->active_stack]->stack_end - 2, default_st[st_status->active_stack]->stack_end - 1, st_status->active_stack);
+    swap_on_stack(default_st[st_status->active_stack]->stack_end - 2 - st_status->start[st_status->active_stack], default_st[st_status->active_stack]->stack_end - 1 - st_status->start[st_status->active_stack], st_status->active_stack);
+  }
+  else
+  {
+    print_warning(Exit_user, "stack underflow in instruction: swap.\n");
   }
   
   if(debug_stack)
   {
-    printf("SWAP at pc: %i\n", program_counter);
+    printf("SWAP at pc: %i, stack: %i\n", program_counter, st_status->active_stack);
   }
   return(1);
 }
 
+int st_swap12(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
+{
+  if(default_st[st_status->active_stack]->stack_end > (st_status->start[st_status->active_stack] + 2))
+  {
+    swap_on_stack(default_st[st_status->active_stack]->stack_end - 3 - st_status->start[st_status->active_stack], default_st[st_status->active_stack]->stack_end - 2 - st_status->start[st_status->active_stack], st_status->active_stack);
+  }
+  else
+  {
+    print_warning(Exit_user, "stack underflow in instruction: swap12.\n");
+  }
+  
+  if(debug_stack)
+  {
+    printf("SWAP12 at pc: %i, stack %i\n", program_counter, st_status->active_stack);
+  }
+  return(1);
+}
   
 int st_copy(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
 {
@@ -2006,6 +2046,35 @@ int st_get_from_out_opt(int option, int program_counter, status_pattern *status,
 {
   sds new;
 
+
+  if(option > 0)
+  {
+    if(option > (*output)->position)
+    {
+      option = (*output)->position;
+    }
+    
+    new = sdsnewlen(&((*output)->data[(*output)->position - option + 1]), option);
+  }
+  else
+  {
+    new = sdsnewlen(&((*output)->data[status->start[st_status->active_stack]]), (*output)->position + 1 - status->start[st_status->active_stack + option]);
+  }
+  
+  push_sds(st_status->active_stack, new);
+
+  if(debug_stack)
+  {
+    printf("GET from OUT string: %s, num of: %i at pc: %i\n", new, option, program_counter);
+  }
+
+  return(1);
+}
+
+int st_get_from_out_opt_last(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
+{
+  sds new;
+
   if(option > 0)
   {
     if(option > (*output)->position)
@@ -2024,7 +2093,7 @@ int st_get_from_out_opt(int option, int program_counter, status_pattern *status,
 
   if(debug_stack)
   {
-    printf("GET from OUT string: %s, num of: %i at pc: %i\n", new, option, program_counter);
+    printf("GET last from OUT string: %s, num of: %i at pc: %i\n", new, option, program_counter);
   }
 
   return(1);
@@ -2058,10 +2127,11 @@ int st_replace_out_opt(int option, int program_counter, status_pattern *status, 
     {
       (*output)->position = 0;
     }
-    
+
+
     if(ret.length > 0)
     {
-      // fprintf(stderr, " put p: %p, len: %i\n", ret.str_p, ret.length);
+      // printf(" string: %.*s put p: %p, len: %i buf p: %p\n", ret.length, ret.str_p, ret.str_p, ret.length, (*output)->data);
       putchars_buffer(ret.str_p, ret.length, output);
     }
     
@@ -2100,6 +2170,15 @@ int st_replace_out_start(int option, int program_counter, status_pattern *status
   value = (*output)->position - status->start[st_status->active_stack] + 1;
 
   st_replace_out_opt(value, program_counter, status, output, stop);
+
+  status->stat_arg[st_status->active_stack] = no_arg_sampling;
+
+  return(1);
+}
+
+
+int st_end_begin(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
+{
 
   status->stat_arg[st_status->active_stack] = no_arg_sampling;
 
@@ -3163,6 +3242,120 @@ int st_logic(int option, int program_counter, status_pattern *status, data_buffe
 }
 
 
+/* counters instructions
+ * 
+ */
+
+int st_cnt_get(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
+{
+  long long int result,
+                value;
+
+  value =  pop_num(st_status->active_stack);
+      
+  if((value > 0) && (value < max_number_counters))
+  {
+    result = counters[value];
+  }
+  else
+  {
+    result = 0ll;
+  }
+  
+  push_num(st_status->active_stack, result);
+
+  if(debug_stack)
+  {
+    printf(" GET COUNTER %lli at pc: %i\n", value, program_counter);
+  }
+
+  return(1);
+}
+
+
+int st_cnt_set(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
+{
+  long long int result,
+                value;
+
+
+  result = pop_num(st_status->active_stack);
+
+  value = pop_num(st_status->active_stack);
+      
+  if((value > 0) && (value < max_number_counters))
+  {
+    counters[value] = result;
+  }
+
+  if(debug_stack)
+  {
+    printf(" SET COUNTER %lli at pc: %i\n", value, program_counter);
+  }
+
+  return(1);
+}
+
+int st_cnt_clr(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
+{
+  long long int value;
+
+
+  value = pop_num(st_status->active_stack);
+      
+  if((value > 0) && (value < max_number_counters))
+  {
+    counters[value] = 0ll;
+  }
+
+  if(debug_stack)
+  {
+    printf(" CLR COUNTER %lli at pc: %i\n", value, program_counter);
+  }
+
+  return(1);
+}
+
+int st_cnt_incr(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
+{
+  long long int value;
+
+
+  value = pop_num(st_status->active_stack);
+      
+  if((value > 0) && (value < max_number_counters))
+  {
+    counters[value]++;
+  }
+
+  if(debug_stack)
+  {
+    printf(" INCR COUNTER %lli at pc: %i\n", value, program_counter);
+  }
+
+  return(1);
+}
+
+int st_cnt_decr(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
+{
+  long long int value;
+
+
+  value = pop_num(st_status->active_stack);
+      
+  if((value > 0) && (value < max_number_counters))
+  {
+    counters[value]--;
+  }
+
+  if(debug_stack)
+  {
+    printf(" DECR COUNTER %lli at pc: %i\n", value, program_counter);
+  }
+
+  return(1);
+}
+
 
 /* string handling instructions
  * 
@@ -3184,10 +3377,23 @@ int st_cat(int option, int program_counter, status_pattern *status, data_buffer 
 
   if(stacksize > 1)
   {
-    ret2 = argument_text(st_status->active_stack, top);
-    
-    ret1 = argument_text(st_status->active_stack, top - 1);
-    
+
+    switch(option)
+    {
+      case 0:
+        /* normal concatenate */
+        ret2 = argument_text(st_status->active_stack, top);
+        ret1 = argument_text(st_status->active_stack, top - 1);
+        break;
+      case 1:
+        /* inverse concatenate */
+        ret1 = argument_text(st_status->active_stack, top);
+        ret2 = argument_text(st_status->active_stack, top - 1);
+        break;
+      default:
+        break;
+    }
+      
     new = sdsnewlen(ret1.str_p, ret1.length);
     // printf(" new1: %s-",new);
     new = sdscatlen(new, ret2.str_p, ret2.length);
@@ -3473,6 +3679,15 @@ int st_funtion_call(int option, int program_counter, status_pattern *status, dat
 }
 
 
+int st_go_back(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
+{
+
+  stop->goback += option;
+  
+  return(1);
+}
+
+
 int st_no_macro_exec(int option, int program_counter, status_pattern *status, data_buffer **output, arg_run *stop)
 {
 
@@ -3603,8 +3818,10 @@ arg_run exec_program(int program_counter, int pattern_len, status_pattern *statu
   
   stop.status = arg_continu;
   stop.pattern_len = pattern_len;
+  stop.goback = 0;
   
   command = (program_list[program_counter]).command;
+  option = (program_list[program_counter]).option;
 
   if(debug)
   {
@@ -3613,11 +3830,21 @@ arg_run exec_program(int program_counter, int pattern_len, status_pattern *statu
   
   while(command > 1)  /* command 0 and 1 mean abort and stop, < 0 end of program */  
   {
-    option = (program_list[program_counter]).option;
+   if(debug_stepstack)
+   {
+     printf("--stack-- pc:%i instr:%.*s \n", program_counter, 8, command_list[command].name.n8);
+   }
     program_counter += command_list[command].command(option, program_counter, status, output, &stop);
     // printf(" prog: %i, opt: %i, pc: %i \n", command, option, program_counter);
 
+   if(debug_stepstack)
+   {
+     printf("--active stack:%i \n", st_status->active_stack);
+     print_stack(st_status->active_stack);
+   }
+
     command = (program_list[program_counter]).command;
+    option = (program_list[program_counter]).option;
   }
   
   if(command == 0)

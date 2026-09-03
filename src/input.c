@@ -41,7 +41,9 @@ char stdin_file_name[] = "stdin";
 
 char *program_name;
 
-char *arg_options;
+sds arg_options;
+sds arg_options_local;
+
 
 data_buffer *current_input_file_buffer;
 
@@ -321,4 +323,21 @@ void print_bits(long long int value)
 
   putchar('\n');
 
+}
+
+void print_buf_info(data_buffer *buffer, FILE *outputfile)
+{
+
+  if(buffer->file >= 0)
+  {
+    fprintf(outputfile, "Buffer filename: %s ", buffer->filename);
+  }
+  else
+  {
+    fprintf(outputfile, "Internal buffer ");
+  }    
+  
+  fprintf(outputfile, "size: %i, length: %i, position: %i, start: %i, divnum: %i, 1st: %c\n", buffer->size, buffer->length, buffer->position,  buffer->start, buffer->divnum,  buffer->data[0]);
+
+  
 }

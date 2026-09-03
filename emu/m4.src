@@ -40,6 +40,7 @@ CODE
 0_define:0_specialchar:;;specialc;nr01;0
 0_define:0_def_mcall:;;defmcall;nr01;0
 0_define:0_atlast:;;at_last;nr01;0
+0_define:0_atfirst:;;at_first;nr01;0
 0_define:0_mset:;;macroset;nr01;0
 0_define:0_info:;;info;nr01;0
 0_define:0_infofield:;$9;info;nr01;0
@@ -47,6 +48,12 @@ CODE
 0_define:0_copy:;;copy;nr01;0
 0_define:0_char:;;num2chr;nr01;0
 0_define:0_program:;;program;nr01;0
+0_define:0_divert:;;divert;nr01;0
+0_define:0_undivert:;;undivert;nr01;0
+0_define:0_divnum:;;get_var;nr01;0;; stack_a pop_to_1 -1
+0_define:0_inter_pat:;;inter_p;nr01;0
+0_define:0_tag_pat:;;tag_p;nr01;0
+0_define:0_link_pat:;;link_prt;nr01;0
 END
 IF:all
 TEXT
@@ -56,9 +63,9 @@ Setting the defaults. This is also the default of @code{m0}.
 END
 CODE
 0_chars_pattern:[]-\@+*?~
-0_define:0_l;0_char:1
+0_define:0_l1;0_char:1
 ;;nn00;;;;0
-0_define:0_r;0_char:2
+0_define:0_r1;0_char:2
 ;;nn00;;;;0
 0_define:0_alt;0_char:3
 ;;nn00;;;;0
@@ -114,6 +121,86 @@ END
 CODE
 0_pattern:0start;[@00-@ff]~;stack_b 1 stack_a begin-1
 END
+HEADIF:Special characters;all
+TEXT
+
+First some special characters are defined to make the definition of macros easier.
+
+The "@code{\ }" is used at the end of a macro to mean all characters except characters valid for a name.
+This ends the detection of a macro name. It is used for all macros which have optional arguments.
+Macros which must be followed by arguments end with a "@code{(}".
+
+The "@code{\B}" is used at the start of a macro to mean all characters except characters valid for a name.
+This is used to not start a macro inside a word.
+
+END
+CODE
+0_specialchar: ;[@00-@2f@3a-@40@5b-@5e@60@7b-@ff]
+0_specialchar:B;[@00-@40@5b-@5e@60@7b-@ff]
+END
+HEADIF:Command line options;all
+TEXT
+
+The collecting of command line options is executed in a separate
+macro-set @code{Args}.
+
+END
+CODE
+0_define:==Options;;get_var;rn00;;; stack_a pop_to_1 -8;Args
+0_define:==Alloptions;;get_var;rn00;;; stack_a pop_to_1 -7;Args
+0_define:==Mset:;;macroset;nr01;0;;;Args
+0_pattern:args;[@00-@ff]~;stack_a begin-1  
+0_pattern:args;=;stack_a end begin 
+0_pattern:args;++-+
+--+-;stack_a end stop
+END
+TEXT
+
+Setting the option of @code{-P} / @code{--prefix-builtins} to
+prefix all builtins with @code{m4_}.
+
+This is accomplished by deleting the macro @code{m4_}.
+This macro is set as default to delete the @code{m4_} part of the macro names.
+Deleting this macro will leave the @code{m4_} part.
+
+END
+CODE
+0_define:-P;;undefine;nn00;;;stack_a "m4_" "0";Args
+0_define:--prefix-builtins;;undefine;nn00;;;stack_a "m4_" "0";Args
+0_define:m4_;;;nn00
+0_divert:-1
+0_mset:Args
+==Alloptions
+==Mset:0
+0_divert:0
+END
+TEXT
+
+The other command line options are executed at the start of a new file.
+
+END
+CODE
+0_def_mcall:-D;define;m4builtin;nn00;args;;Args
+0_def_mcall:--define=;define;m4builtin;nn00;args;;Args
+0_def_mcall:-U;undefine;m4builtin;nn00;args;;Args
+0_def_mcall:--undefine=;undefine;m4builtin;nn00;args;;Args
+END
+TEXT
+
+Setting options at the start of a file by an @code{mcall}
+to the @code{==Options} macro in @code{Args}.
+
+During this time diverting the output so that no output of options remain.
+
+END
+CODE
+0_atfirst:m4_define(4_prev_div, divnum)m4_divert(-1)++-+
+4_Set_Options
+--+-m4_divert(4_prev_div)m4_dnl++-+
+--+-
+0_def_mcall:4_Set_Options;==Options;Args;++-+nn00
+--+-;;;m4exec
+END
 HEADIF:Collecting arguments of macros;all
 TEXT
 
@@ -131,22 +218,6 @@ CODE
 0_pattern:m4;,;stack_c dup <=1 if stack_a end endif
 END
 HEADIF:define;all
-TEXT
-
-First some special characters are defined to make the definition of macros easier.
-
-The "@code{\ }" is used at the end of a macro to mean all characters except characters valid for a name.
-This ends the detection of a macro name. It is used for all macros which have optional arguments.
-Macros which must be followed by arguments end with a "@code{(}".
-
-The "@code{\B}" is used at the start of a macro to mean all characters except characters valid for a name.
-This is used to not start a macro inside a word.
-
-END
-CODE
-0_specialchar: ;[@00-@2f@3a-@40@5b-@5e@60@7b-@ff]
-0_specialchar:B;[@00-@40@5b-@5e@60@7b-@ff]
-END
 TEXT
 
 The @code{define} of @code{m4} can not be directly linked to the function @code{define}.
@@ -202,7 +273,7 @@ pop_to_1 "\B" copyfr_h cat stack_h pop stack_a copyfr_h cat  "\B" copyfr_e cat
 copyfr_h  cat "m4exec" "m4exec" "copy" fun_call 
 else
 stack_a pop_to_1 "\B" copyfr_e cat "\ " cat 
-copyfr_f "" "rr11" "m4" "" "" "m4exec" "define" fun_call 
+copyfr_f "" "rr11" "m4" "" "" "m4exec" "" "define" fun_call 
 endif --+-
 END
 TEXT
@@ -215,7 +286,7 @@ This has as a side effect that this new macro can also be called using the @code
 
 END
 CODE
-0_define:\Bdefine(;;;nr11 ;m4;; @define ;m4exec
+0_define:\Bm4_define(;;;nr11 ;m4;; @define ;m4exec
 0_define:define;;;nn00;m4;; @define ;m4builtin
 0_setinfo:define;(;m4builtin
 END
@@ -235,9 +306,9 @@ pop_to_1 "\B" copyfr_h cat stack_h pop stack_a copyfr_h cat  "\B" copyfr_e cat
 copyfr_h  cat "m4exec" "m4exec" "pushcopy" fun_call 
 else
 stack_a pop_to_1 "\B" copyfr_e cat "\ " cat 
-copyfr_f "" "rr11" "m4" "" "" "m4exec" "push" fun_call 
+copyfr_f "" "rr11" "m4" "" "" "m4exec" "" "push" fun_call 
 endif --+-
-0_define:\Bpushdef(;;;nr11 ;m4;; @push ;m4exec
+0_define:\Bm4_pushdef(;;;nr11 ;m4;; @push ;m4exec
 0_define:pushdef;;;nn00;m4;; @push ;m4builtin
 0_setinfo:pushdef;(;m4builtin
 END
@@ -277,7 +348,7 @@ endif --+-
 0_pattern:m4defn;[(,][@00- ]*[!-@ff];stack_b begin-1 ;1
 0_pattern:m4defn;);stack_c 1 - dup =0 if @m4defnif stop endif
 0_pattern:m4defn;,;stack_c dup <=1 if @m4defnif endif
-0_define:\Bdefn(;$1;;nr11 ;m4defn;;;m4exec
+0_define:\Bm4_defn(;$1;;nr11 ;m4defn;;;m4exec
 0_define:defn;$1;;nn00;m4defn;;;m4builtin
 0_setinfo:defn;(;m4builtin
 END
@@ -302,7 +373,7 @@ with the correct input set by the program.
 
 END
 CODE
-0_define:\Bpopdef(;;pop;nr11 ;m4;; @undef ;m4exec
+0_define:\Bm4_popdef(;;pop;nr11 ;m4;; @undef ;m4exec
 0_define:popdef;;pop;nn00;m4;; @undef ;m4builtin
 0_setinfo:popdef;(;m4builtin
 END
@@ -313,7 +384,7 @@ Similar to @code{popdef}, but with an @code{undefine} function.
 
 END
 CODE
-0_define:\Bundefine(;;undefine;nr11 ;m4;; @undef ;m4exec
+0_define:\Bm4_undefine(;;undefine;nr11 ;m4;; @undef ;m4exec
 0_define:undefine;;undefine;nn00;m4;; @undef ;m4builtin
 0_setinfo:undefine;(;m4builtin
 END
@@ -343,7 +414,7 @@ This enables the use of macros in the default macro set to perform the change of
 
 END
 CODE
-0_def_mcall:\Bchangequote\ ;0_changequote;0;nr11 ;m4;;m4exec
+0_def_mcall:\Bm4_changequote\ ;0_changequote;0;nr11 ;m4;;m4exec
 0_def_mcall:changequote;0_changequote;0;nn00;m4;;m4builtin
 0_setinfo:changequote;\ ;m4builtin
 0_define:0_changequote;++-+0_undefine:0_get_var:101
@@ -383,7 +454,7 @@ It uses the @code{__ifelse} macro defined further down like an
 
 END
 CODE
-0_def_mcall:\Bchangecom\ ;0_changecom;0;nr11 ;m4;;m4exec
+0_def_mcall:\Bm4_changecom\ ;0_changecom;0;nr11 ;m4;;m4exec
 0_def_mcall:changecom;0_changecom;0;nr00;m4;;m4builtin
 0_setinfo:changecom;\ ;m4builtin
 0_define:0_changecom;++-+__ifelse(0_get_var:104
@@ -413,7 +484,7 @@ For macros that have a different argument collection than the @code{m4} of
 The builtin macro itself is also defined in the macro set @code{m4builtin}.
 END
 CODE
-0_def_mcall:\Bbuiltin(;;m4builtin;rr11 ;m4;;m4exec
+0_def_mcall:\Bm4_builtin(;;m4builtin;rr11 ;m4;;m4exec
 0_def_mcall:builtin;;m4builtin;nn00;m4;;m4builtin
 0_setinfo:builtin;(;m4builtin
 END
@@ -422,7 +493,7 @@ TEXT
 
 END
 CODE
-0_define:\Binclude(;;include;rr11 ;m4;;;m4exec
+0_define:\Bm4_include(;;include;rr11 ;m4;;;m4exec
 0_define:include;;include;nn00;m4;;;m4builtin
 0_setinfo:include;(;m4builtin
 END
@@ -431,7 +502,7 @@ TEXT
 
 END
 CODE
-0_define:\Bsinclude(;;sinclude;rr11 ;m4;;;m4exec
+0_define:\Bm4_sinclude(;;sinclude;rr11 ;m4;;;m4exec
 0_define:sinclude;;sinclude;nn00;m4;;;m4builtin
 0_setinfo:sinclude;(;m4builtin
 END
@@ -439,14 +510,14 @@ HEADIF:place;bsd
 TEXT
 
 The @code{place} is like an @code{include}, but the contents
-of the file is not recurrently scanned for macros.
+of the file is not recursively scanned for macros.
 
-To have the @code{builtin} not to recurrently scan the output
+To have the @code{builtin} not to recursively scan the output
 the setting thereof is overruled with the @code{recur_n}.
 
 END
 CODE
-0_define:\Bplace(;;include;nr11 ;m4;;;m4exec
+0_define:\Bm4_place(;;include;nr11 ;m4;;;m4exec
 0_define:place;;include;nn00;m4;;recur_n;m4builtin
 0_setinfo:place;(;m4builtin
 END
@@ -457,7 +528,7 @@ Similar to @code{place} just silent for file errors.
 
 END
 CODE
-0_define:\Bsplace(;;sinclude;nr11 ;m4;;;m4exec
+0_define:\Bm4_splace(;;sinclude;nr11 ;m4;;;m4exec
 0_define:splace;;sinclude;nn00;m4;;recur_n;m4builtin
 0_setinfo:splace;(;m4builtin
 END
@@ -466,7 +537,7 @@ TEXT
 
 END
 CODE
-0_define:\Bdivert\ ;;divert;nr11 ;m4;;;m4exec
+0_define:\Bm4_divert\ ;;divert;nr11 ;m4;;;m4exec
 0_define:divert;;divert;nn00;m4;;;m4builtin
 0_setinfo:divert;\ ;m4builtin
 END
@@ -475,7 +546,7 @@ TEXT
 
 END
 CODE
-0_define:\Bundivert\ ;;undivert;nr11 ;m4;;;m4exec
+0_define:\Bm4_undivert\ ;;undivert;nr11 ;m4;;;m4exec
 0_define:undivert;;undivert;nn00;m4;;;m4builtin
 0_setinfo:undivert;\ ;m4builtin
 END
@@ -484,7 +555,7 @@ TEXT
 
 END
 CODE
-0_define:\Bdivnum\ ;;get_var;nn11 ;m4;;stack_a pop_to_1 -1;m4exec
+0_define:\Bm4_divnum\ ;;get_var;nn11 ;m4;;stack_a pop_to_1 -1;m4exec
 0_define:divnum;;get_var;nn00;m4;;stack_a pop_to_1 -1;m4builtin
 0_setinfo:divnum;\ ;m4builtin
 END
@@ -493,7 +564,7 @@ TEXT
 
 END
 CODE
-0_define:\B__line__\ ;;get_var;nn11 ;m4;;stack_a pop_to_1 -4;m4exec
+0_define:\Bm4___line__\ ;;get_var;nn11 ;m4;;stack_a pop_to_1 -4;m4exec
 0_define:__line__;;get_var;nn00;m4;;stack_a pop_to_1 -4;m4builtin
 0_setinfo:__line__;\ ;m4builtin
 END
@@ -502,7 +573,7 @@ TEXT
 
 END
 CODE
-0_define:\B__file__\ ;;get_var;nn11 ;m4;;stack_a pop_to_1 -5;m4exec
+0_define:\Bm4___file__\ ;;get_var;nn11 ;m4;;stack_a pop_to_1 -5;m4exec
 0_define:__file__;;get_var;nn00;m4;;stack_a pop_to_1 -5;m4builtin
 0_setinfo:__file__;\ ;m4builtin
 END
@@ -511,7 +582,7 @@ TEXT
 
 END
 CODE
-0_define:\B__program__\ ;;get_var;nn11 ;m4;;stack_a pop_to_1 -6;m4exec
+0_define:\Bm4___program__\ ;;get_var;nn11 ;m4;;stack_a pop_to_1 -6;m4exec
 0_define:__program__;;get_var;nn00;m4;;stack_a pop_to_1 -6;m4builtin
 0_setinfo:__program__;\ ;m4builtin
 END
@@ -520,7 +591,7 @@ TEXT
 
 END
 CODE
-0_define:\B__0_get_var:-2
+0_define:\Bm4___0_get_var:-2
 __\ ;;;nn11;m4;;;m4exec
 0_define:__0_get_var:-2
 __;;;nn00;m4;;;m4builtin
@@ -532,7 +603,7 @@ TEXT
 
 END
 CODE
-0_define:\B0_get_var:-2
+0_define:\Bm4_0_get_var:-2
 \ ;0_get_var:-2
 ;;nn11;m4;;;m4exec
 0_define:0_get_var:-2
@@ -546,7 +617,7 @@ TEXT
 
 END
 CODE
-0_define:\Berrprint(;;errprint;nr11 ;m4;;;m4exec
+0_define:\Bm4_errprint(;;errprint;nr11 ;m4;;;m4exec
 0_define:errprint;;errprint;nn00;m4;;;m4builtin
 0_setinfo:errprint;(;m4builtin
 END
@@ -555,7 +626,7 @@ TEXT
 
 END
 CODE
-0_define:\Bm4exit(;;exit;nr11;m4;;;m4exec
+0_define:\Bm4_m4exit(;;exit;nr11;m4;;;m4exec
 0_define:m4exit;;exit;nn00;m4;;;m4builtin
 0_setinfo:m4exit;(;m4builtin
 END
@@ -564,7 +635,7 @@ TEXT
 
 END
 CODE
-0_define:\Bindex(;;strindex;rr11 ;m4;;;m4exec
+0_define:\Bm4_index(;;strindex;rr11 ;m4;;;m4exec
 0_define:index;;strindex;nn00;m4;;;m4builtin
 0_setinfo:index;(;m4builtin
 END
@@ -573,7 +644,7 @@ TEXT
 
 END
 CODE
-0_define:\Bsubstr(;;substr;rr11 ;m4;;;m4exec
+0_define:\Bm4_substr(;;substr;rr11 ;m4;;;m4exec
 0_define:substr;;substr;nn00;m4;;;m4builtin
 0_setinfo:substr;(;m4builtin
 END
@@ -582,7 +653,7 @@ TEXT
 
 END
 CODE
-0_define:\Btranslit(;;strtrans;rr11 ;m4;;;m4exec
+0_define:\Bm4_translit(;;strtrans;rr11 ;m4;;;m4exec
 0_define:translit;;strtrans;nn00;m4;;;m4builtin
 0_setinfo:translit;(;m4builtin
 END
@@ -591,7 +662,7 @@ TEXT
 
 END
 CODE
-0_define:\Bm4wrap(;;at_last;nr11 ;m4;;;m4exec
+0_define:\Bm4_m4wrap(;;at_last;nr11 ;m4;;;m4exec
 0_define:m4wrap;;at_last;nn00;m4;;;m4builtin
 0_setinfo:m4wrap;(;m4builtin
 END
@@ -602,7 +673,7 @@ This is different from the @code{m4} macro @code{syscmd}.
 See the @code{rr11 } settings string.
 END
 CODE
-0_define:\Besyscmd(;;shell;rr11 ;m4;;;m4exec
+0_define:\Bm4_esyscmd(;;shell;rr11 ;m4;;;m4exec
 0_define:esyscmd;;shell;nn00;m4;;;m4builtin
 0_setinfo:esyscmd;(;m4builtin
 END
@@ -613,7 +684,7 @@ in the @code{nr11 } settings string.
 
 END
 CODE
-0_define:\Bsyscmd(;;shell;nr11 ;m4;;;m4exec
+0_define:\Bm4_syscmd(;;shell;nr11 ;m4;;;m4exec
 0_define:syscmd;;shell;nn00;m4;;recur_n;m4builtin
 0_setinfo:syscmd;(;m4builtin
 END
@@ -622,7 +693,7 @@ TEXT
 
 END
 CODE
-0_define:\Bsysval\ ;;get_var;nn11 ;m4;;stack_a pop_to_1 -9;m4exec
+0_define:\Bm4_sysval\ ;;get_var;nn11 ;m4;;stack_a pop_to_1 -9;m4exec
 0_define:sysval;;get_var;nn00;m4;;stack_a pop_to_1 -9 recur_n;m4builtin
 0_setinfo:sysval;\ ;m4builtin
 END
@@ -632,7 +703,7 @@ Making the "safe" temporary file instead of the "unsafe" file in the
 original @code{m4}.
 END
 CODE
-0_define:\Bmaketemp(;;tempfile;rr11 ;m4;;;m4exec
+0_define:\Bm4_maketemp(;;tempfile;rr11 ;m4;;;m4exec
 0_define:maketemp;;tempfile;nn00;m4;;;m4builtin
 0_setinfo:maketemp;(;m4builtin
 END
@@ -641,7 +712,7 @@ TEXT
 Same as @code{maketemp}, but the output is not recursive.
 END
 CODE
-0_define:\Bmkstemp(;;tempfile;nr11 ;m4;;;m4exec
+0_define:\Bm4_mkstemp(;;tempfile;nr11 ;m4;;;m4exec
 0_define:mkstemp;;tempfile;nn00;m4;;recur_n;m4builtin
 0_setinfo:mkstemp;(;m4builtin
 END
@@ -659,7 +730,7 @@ CODE
 0_pattern:m4dnl;[@00-@ff]~;begin-1
 0_pattern:m4dnl;++-+
 --+-;end stop
-0_define:\Bdnl\ ;;;++-+nn11
+0_define:\Bm4_dnl\ ;;;++-+nn11
 --+-;m4dnl;;;m4exec
 0_define:dnl;;;++-+nn00
 --+-;m4dnl;;;m4builtin
@@ -672,7 +743,7 @@ TEXT
 
 END
 CODE
-0_define:\Bincr(;$1;;rr11 ;m4;;stack_d getarg1 1 + putarg1;m4exec
+0_define:\Bm4_incr(;$1;;rr11 ;m4;;stack_d getarg1 1 + putarg1;m4exec
 0_define:incr;$1;;nn00;m4;;stack_d getarg1 1 + putarg1;m4builtin
 0_setinfo:incr;(;m4builtin
 END
@@ -681,7 +752,7 @@ TEXT
 
 END
 CODE
-0_define:\Bdecr(;$1;;rr11 ;m4;;stack_d getarg1 1 - putarg1;m4exec
+0_define:\Bm4_decr(;$1;;rr11 ;m4;;stack_d getarg1 1 - putarg1;m4exec
 0_define:decr;$1;;nn00;m4;;stack_d getarg1 1 - putarg1;m4builtin
 0_setinfo:decr;(;m4builtin
 END
@@ -690,7 +761,7 @@ TEXT
 
 END
 CODE
-0_define:\Bshift(;$@;;rr11 ;m4;;base_=_1;m4exec
+0_define:\Bm4_shift(;$@;;rr11 ;m4;;base_=_1;m4exec
 0_define:shift;$@;;nn00;m4;;base_=_1;m4builtin
 0_setinfo:shift;(;m4builtin
 END
@@ -702,7 +773,7 @@ and recurse this macro.
 
 END
 CODE
-0_define:\Bindir(;$1($@);;rr11 ;m4;;base_=_1;m4exec
+0_define:\Bm4_indir(;$1($@);;rr11 ;m4;;base_=_1;m4exec
 0_define:indir;$1($@);;nn00;m4;;base_=_1;m4builtin
 0_setinfo:indir;(;m4builtin
 END
@@ -715,7 +786,7 @@ This enables the use of macros in the default macro set.
 
 END
 CODE
-0_def_mcall:\Bifdef(;0_ifdef;0;rr11 ;m4;;m4exec
+0_def_mcall:\Bm4_ifdef(;0_ifdef;0;rr11 ;m4;;m4exec
 0_def_mcall:ifdef;0_ifdef;0;nn00;m4;;m4builtin
 0_setinfo:ifdef;(;m4builtin
 0_define:0_ifdef;++-+0_ifmacro:\B++-+$1--+-\ ;++-+$2--+-;++-+0_ifmacro:\B++-+$1--+-(;++-+$2--+-;++-+$3--+-;m4exec
@@ -727,7 +798,7 @@ TEXT
 
 END
 CODE
-0_define:\Blen(;$1;;nr11 ;m4;;stack_a pop_to_2 argnum >0 if strlen else 0 endif;m4exec
+0_define:\Bm4_len(;$1;;nr11 ;m4;;stack_a pop_to_2 argnum >0 if strlen else 0 endif;m4exec
 0_define:len;$1;;nn00;m4;;stack_a pop_to_2 argnum >0 if strlen else 0 endif;m4builtin
 0_setinfo:len;(;m4builtin
 END
@@ -751,7 +822,7 @@ CODE
 0_pattern:m4if;);stack_c 1 - dup =0 if stack_a end ifcmpset stop endif
 0_pattern:m4if;[(,][@00- ]*[!-@ff];stack_a begin-1 ;1
 0_pattern:m4if;,;stack_c dup <=1 if stack_a end stack_d argnum 3 mod =0 if stack_a ifcmpset endif endif
-0_define:\Bifelse(;$1;;rr11 ;m4if;; stack_a argnum =1 ifthen pop argnum =2 ifthen pop pop;m4exec
+0_define:\Bm4_ifelse(;$1;;rr11 ;m4if;; stack_a argnum =1 ifthen pop argnum =2 ifthen pop pop;m4exec
 0_def_mcall:ifelse;0_ifelse;0;nn00;m4;;m4builtin
 0_setinfo:ifelse;(;m4builtin
 0_define:0_ifelse;4_ifelse($@);;rn00;m4;;;0
@@ -816,7 +887,7 @@ CODE
 0_pattern:m4eval;);stack_c 1 - dup >=1 if stack_b opexto nop endif stack_c dup =0 if stack_a end argnum =1 if stack_b opexall putarg1 endif stop endif
 0_pattern:m4eval;[(,][@00- ]*[!-@ff];stack_a begin-1 ;1
 0_pattern:m4eval;,;stack_c dup <=1 if stack_a end argnum =1 if stack_b opexall putarg1 endif endif
-0_define:\Beval(;;num2str;rr11 ;m4eval;;;m4exec
+0_define:\Bm4_eval(;;num2str;rr11 ;m4eval;;;m4exec
 0_def_mcall:eval;0_eval;0;nn00;m4;;m4builtin
 0_setinfo:eval;(;m4builtin
 0_define:0_eval;4_eval($*);;rn00;m4;;;0
@@ -827,7 +898,7 @@ TEXT
 Same as the @code{eval} macro of @code{m4}.
 END
 CODE
-0_define:\Bexpr(;;num2str;rr11 ;m4eval;;;m4exec
+0_define:\Bm4_expr(;;num2str;rr11 ;m4eval;;;m4exec
 0_def_mcall:expr;0_eval;0;nn00;m4;;m4builtin
 0_setinfo:expr;(;m4builtin
 END
@@ -840,17 +911,27 @@ to implement the @code{printf} like output.
 END
 CODE
 0_pattern:m4format;[@00-@ff]~;stack_d 2
-0_pattern:m4format;%[0-9];stack_e begin+0
-0_append_pattern:m4format;[0-9]*\D;stack_e get_st+1
-0_pattern:m4format;%-[0-9];stack_e begin+0
-0_append_pattern:m4format;[0-9]*\D;stack_e get_st+2
-0_pattern:m4format;%[0-9]+s;stack_e copyfr_d getarg copyto_d strlen - " " str* putoutst stack_d putout-0 1 +
-0_pattern:m4format;%-[0-9]+s;stack_e copyfr_d getarg dup putoutst strlen - " " str* putout-0 stack_d 1 +
-0_pattern:m4format;%s;stack_d dup getarg putout 1 +
-0_pattern:m4format;%[1-9][0-9]*d;stack_d copyto_e stack_e getarg 0 + copyto_d strlen - " " str* putoutst stack_d putout-0 1 +
-0_pattern:m4format;%[0][0-9]+d;stack_e get_st+2 stack_d copyto_e stack_e getarg 0 + copyto_d strlen - "0" str* putoutst stack_d putout-0 1 +
-0_pattern:m4format;%d;stack_d dup getarg 0 + putout 1 +
-0_define:\Bformat(;;;rr11 ;m4;m4format;;m4exec
+0_pattern:m4format;%;stack_e begin+0
+0_tag_pat:m4format;1
+0_append_pattern:m4format;-;
+0_tag_pat:m4format;2
+0_append_pattern:m4format;[0-9];stack_f begin+0
+0_append_pattern:m4format;[0-9]*\D;stack_f get_st-1 endbegin
+0_tag_pat:m4format;3
+0_inter_pat:m4format;[0-9]+s;stack_e copyfr_f copyfr_d getarg copyto_d strlen - " " str* putoutst stack_d putout-0 1 +  
+0_tag_pat:m4format;4
+0_inter_pat:m4format;[0-9]+s;stack_e copyfr_f copyfr_d getarg dup putoutst strlen - " " str* putout-0 stack_d 1 + 
+0_tag_pat:m4format;5
+0_inter_pat:m4format;s;stack_e copyfr_d getarg putoutst stack_d 1 +
+0_tag_pat:m4format;6
+0_inter_pat:m4format;[1-9][0-9]*d;stack_e copyfr_f copyfr_d getarg 0 + copyto_d strlen - " " str* putoutst stack_d putout-0 1 +
+0_tag_pat:m4format;7
+0_inter_pat:m4format;[0][0-9]+d;stack_e copyfr_f get_st+2 copyfr_d getarg 0 + copyto_d strlen - "0" str* putoutst stack_d putout-0 1 +
+0_tag_pat:m4format;8
+0_inter_pat:m4format;d;stack_e copyfr_d getarg 0 + putoutst stack_d 1 +
+0_link_pat:1;2;3;5;6;7;8
+0_link_pat:2;4
+0_define:\Bm4_format(;;;rr11 ;m4;m4format;;m4exec
 0_define:format;;;nn00;m4;m4format;;m4builtin
 END
 HEADIF:dumpdef;posix;gnu;bsd
@@ -858,7 +939,7 @@ TEXT
  to do
 END
 CODE
-0_define:\Bdumpdef(;;;nr11 ;m4;;;m4exec
+0_define:\Bm4_dumpdef(;;;nr11 ;m4;;;m4exec
 END
 HEADIF:regexp;gnu;bsd
 TEXT
@@ -879,7 +960,7 @@ TEXT
  nop
 END
 CODE
-0_define:\Btraceon\ ;;;nr11 ;m4;;;m4exec
+0_define:\Bm4_traceon\ ;;;nr11 ;m4;;;m4exec
 0_define:traceon;;;nn00;m4;;;m4builtin
 0_setinfo:traceon;\ ;m4builtin
 END
@@ -890,7 +971,7 @@ TEXT
  nop
 END
 CODE
-0_define:\Btraceoff\ ;;;nr11 ;m4;;;m4exec
+0_define:\Bm4_traceoff\ ;;;nr11 ;m4;;;m4exec
 0_define:traceoff;;;nn00;m4;;;m4builtin
 0_setinfo:traceoff;\ ;m4builtin
 END
@@ -919,7 +1000,7 @@ Extra input is inserted to be sure that all macros are recognised at the start a
 These macros do not generate output.
 END
 CODE
-0_chars_pattern:0_l0_r-\@+*?~
+0_chars_pattern:0_l10_r1-\@+*?~
 0_atlast:++-+ 0_dnl
 --+-
 0_mset:m4exec

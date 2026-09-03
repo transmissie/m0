@@ -28,11 +28,30 @@ typedef enum
     
 } macro_option_recursive;
 
+/* define vlm length recovery selection */
+typedef enum
+{
+  Vlm_len_fixed,            /* length is fixed = length of macro name (like normal macro) */
+  Vlm_len_short_extended,   /* length shortest with extension */
+  Vlm_len_short,            /* length shortest  */
+  Vlm_len_long              /* length longest */
+    
+} vlm_recovery_option;
+
+typedef enum
+{
+  Vlm_parts_stop,      /* do not find length of previous part */          
+  Vlm_parts_prev       /* use length of previous part */
+   
+} vlm_recovery_parts;
+
 
 /* the macro definition and all other info of the macro */
 typedef struct macro_def
 {
   macro_option_recursive recursive;  /* the result of the macro is used for macro expansion */
+  vlm_recovery_option vlm_recov_len; /* select how the vlm length is determined */
+  vlm_recovery_parts vlm_recov_part; /* select to continue to part */
   run_macro arg_type;  /* are macros expanded during argument collection  */
   int builtin;      /* index to builtin macro functions */
   sds name;         /* the macro name from the definition of the macro, used to find similar in list */
@@ -50,6 +69,16 @@ typedef struct macro_def
   struct macro_def *prev; /* pointer to the previous definition */
   uint8_t virtual_char; /* optional virtual char to be used */
 } macro_def;
+
+
+/* the info of macro parts */
+typedef struct macro_part
+{
+  vlm_recovery_option vlm_recov_len; /* select how the vlm length is determined */
+  vlm_recovery_parts vlm_recov_part; /* select to continue to part */
+  sds name;         /* the macro name from the definition of the macro, only for info used */
+  int name_len;      /* the length of the name as calculated for the vectors */
+} macro_part;
 
 
 /* following struct and union are used for holding the data string for macro names
@@ -158,11 +187,17 @@ extern charstr_chars (*current_charstr_chars);
 
 extern macro_def (*macro_list);
 
+extern macro_part (*macropart_list);
+
+extern int end_macro_list;
+
 void init_variable(int);
 
 charstr_chars *init_charstr_chars(uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t);
 
 void init_macros(void);
+
+void init_macroparts(void);
 
 void init_asciitohex(void);
 
@@ -186,11 +221,21 @@ void add_pattern(data_buffer **);
 
 void append_pattern(data_buffer **);
 
+void inter_pattern(data_buffer **);
+
 void clear_pattern(data_buffer **);
 
 void copy_pattern(data_buffer **);
 
 void add_program(data_buffer **);
+
+void tag_pattern_position(data_buffer **);
+
+void link_patternparts(data_buffer **);
+
+void tag_macro_position(data_buffer **);
+
+void define_macro_part(data_buffer **);
 
 void push_macro(data_buffer **);
 
@@ -239,6 +284,8 @@ void divert(data_buffer **);
 void undivert(data_buffer **);
 
 void at_last(data_buffer **);
+
+void at_first(data_buffer **);
 
 void print_error(data_buffer **);
 

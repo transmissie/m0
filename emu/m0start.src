@@ -41,6 +41,19 @@ CODE
 0_define:0_chars_args:;;chararg;nr01;0
 0_define:0_specialchar:;;specialc;nr01;0
 0_define:0_select_macros:;;macroset;nr01;0
+0_define:0_divert:;;divert;nr01;0
+0_define:0_def_mcall:;;defmcall;nr01;0
+0_define:0_atlast:;;at_last;nr01;0
+0_define:0_mset:;;macroset;nr01;0
+0_define:0_info:;;info;nr01;0
+0_define:0_infofield:;$9;info;nr01;0
+0_define:0_setinfo:;;set_info;nr01;0
+0_define:0_copy:;;copy;nr01;0
+0_define:0_char:;;num2chr;nr01;0
+0_define:0_program:;;program;nr01;0
+0_define:0_part_macro:;;part_m;nr01;0
+0_define:0_tag_macro:;;tag_m;nr01;0
+0_define:0_link_parts:;;link_prt;nr01;0
 END
 IF:all
 TEXT
@@ -81,5 +94,5 @@ CODE
 0_pattern:m4if;);stack_c 1 - dup =0 if stack_a end ifcmpset stop endif
 0_pattern:m4if;[(,][@00- ]*[!-@ff];stack_a begin-1 ;1
 0_pattern:m4if;,;stack_c dup <=1 if stack_a end stack_d argnum 3 mod =0 if stack_a ifcmpset endif endif
-0_define:\Bifelse(;$1;;rr11 ;m4if;; stack_a argnum =1 ifthen pop argnum =2 ifthen pop pop
+0_define:ifelse(;$1;;rr11 ;m4if;; stack_a argnum =1 ifthen pop argnum =2 ifthen pop pop
 END

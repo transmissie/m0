@@ -154,7 +154,7 @@ They are similar to an @code{if} but their influence is outside of the macro.
 
 Therefore the @code{m6} pattern will do the check of the if
 of the argument for these macros. The called macros are nop
-except for setting the no recurrent in the @code{GO} macro.
+except for setting the no recurive in the @code{GO} macro.
 
 END
 CODE

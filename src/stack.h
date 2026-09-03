@@ -40,6 +40,7 @@ typedef struct
         // replace_len;
     // sds replace_text;
     int pattern_len;     /* length of the triggered pattern part */
+    int goback;    /* length to go back in the input and output after a stop */ 
 } arg_run;
 
 /* only extern because used for statistics */
@@ -89,6 +90,8 @@ int st_dup(int, int, status_pattern *, data_buffer **, arg_run *);
 
 int st_swap(int, int, status_pattern *, data_buffer **, arg_run *);
 
+int st_swap12(int, int, status_pattern *, data_buffer **, arg_run *);
+
 int st_copy(int, int, status_pattern *, data_buffer **, arg_run *);
 
 int st_copyfrom(int, int, status_pattern *, data_buffer **, arg_run *);
@@ -99,11 +102,15 @@ int st_get_arg_num(int, int, status_pattern *, data_buffer **, arg_run *);
 
 int st_get_from_out_opt(int, int, status_pattern *, data_buffer **, arg_run *);
 
+int st_get_from_out_opt_last(int, int, status_pattern *, data_buffer **, arg_run *);
+
 int st_replace_out_opt(int, int, status_pattern *, data_buffer **, arg_run *);
 
 int st_replace_out(int, int, status_pattern *, data_buffer **, arg_run *);
 
 int st_replace_out_start(int, int, status_pattern *, data_buffer **, arg_run *);
+
+int st_end_begin(int, int, status_pattern *, data_buffer **, arg_run *);
 
 int st_push_toarg(int, int, status_pattern *, data_buffer **, arg_run *);
 
@@ -171,6 +178,16 @@ int st_logic(int, int, status_pattern *, data_buffer **, arg_run *);
 
 int st_ifthen(int, int, status_pattern *, data_buffer **, arg_run *);
 
+int st_cnt_get(int, int, status_pattern *, data_buffer **, arg_run *);
+
+int st_cnt_set(int, int, status_pattern *, data_buffer **, arg_run *);
+
+int st_cnt_clr(int, int, status_pattern *, data_buffer **, arg_run *);
+
+int st_cnt_incr(int, int, status_pattern *, data_buffer **, arg_run *);
+
+int st_cnt_decr(int, int, status_pattern *, data_buffer **, arg_run *);
+
 int st_cat(int, int, status_pattern *, data_buffer **, arg_run *);
 
 int st_str_multiply(int, int, status_pattern *, data_buffer **, arg_run *);
@@ -192,6 +209,8 @@ int st_op_stack_ex_to(int, int, status_pattern *, data_buffer **, arg_run *);
 int st_op_stack_push(int, int, status_pattern *, data_buffer **, arg_run *);
 
 int st_funtion_call(int, int, status_pattern *, data_buffer **, arg_run *);
+
+int st_go_back(int, int, status_pattern *, data_buffer **, arg_run *);
 
 int st_no_macro_exec(int, int, status_pattern *, data_buffer **, arg_run *);
 

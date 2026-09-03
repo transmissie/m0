@@ -77,12 +77,14 @@
  *       check
  *       memory
  *       mask
+ *       links
  * 3. number of optional registers for patterns 
  *     (his.incr_pattern) normally 3 times number of 
  *     pattern vector sets.
  *       check
  *       memory
  *       mask
+ *       links
  *   
  */ 
 
@@ -113,7 +115,8 @@ typedef struct
 {
   uint64_t check,
            mem,
-           onetimemask;
+           onetimemask,
+           links;
 } pattern_registers;
 
 
@@ -138,25 +141,23 @@ void process_virtual(uint8_t);
 
 
 
-static inline int set_pattern_history(int size)
-{
-  int prev;
-  
-  prev = his.incr_pattern;
-  
-  his.incr_pattern = size;
-  his.incr_size = his.incr_checks + size * pattern_check_size;
-  
-  return(prev);
-}
 
 static inline void set_vlm_history(void)
 {
- 
+
+  if(arglist != NULL)
+  {
+    his.incr_pattern = arglist->vec_size * pattern_check_size;
+  }
+  else
+  {
+    his.incr_pattern = 0;
+  }
+
   
   if(current_status_bitap->patlist != NULL)
   {
-    his.incr_vlm = (current_status_bitap->patlist->vec_size / 64 + 1) * pattern_check_size;
+    his.incr_vlm = current_status_bitap->patlist->vec_size * pattern_check_size;
     his.incr_checks = his.incr_macro + his.incr_vlm;
   }
   else
@@ -165,35 +166,32 @@ static inline void set_vlm_history(void)
     his.incr_checks = his.incr_macro;
   }
 
-  his.incr_size = his.incr_checks + his.incr_pattern * pattern_check_size;
-  
+  his.incr_size = his.incr_checks + his.incr_pattern;
+
 }
 
-void set_vlm_masks_history(void)
+
+void set_masks_history(pattern_data *list, int offset)
 {
   pattern_masks *masks;
   pattern_registers *patcheck;
   int i;
-  
-  /* set the start masks of the vlm */
-  if(current_status_bitap->patlist != NULL)
+
+    /* set the start masks */
+  if(list != NULL)
   {
-    
-    masks = current_status_bitap->patlist->masks;
-    
-    patcheck = (pattern_registers *)(his_checks + his_index[his.position] + his.incr_macro);
-    
-    for(i = 0 ; i < current_status_bitap->patlist->vec_size; i++)
+
+    masks = list->masks;
+
+    patcheck = (pattern_registers *)(his_checks + his_index[his.position] + offset);
+
+    for(i = 0 ; i < list->vec_size; i++)
     {
       patcheck[i].onetimemask = masks[i].mask;
-      
-      if(debug)
-      {
-        print_bits(masks[i].mask);
-      }
     }
   }
 }
+
 
 static inline void clear_step_history(void)
 {
@@ -207,7 +205,8 @@ static inline void clear_step_history(void)
     his_checks[i] = 0ULL;
   }
 
-  set_vlm_masks_history();
+  set_masks_history(current_status_bitap->patlist, his.incr_macro);
+  set_masks_history(arglist, his.incr_checks);
 
   if(debug)
   {
@@ -265,7 +264,8 @@ void check_history_size(void)
       his_checks[i] = 0ULL;
     }
 
-    set_vlm_masks_history();
+    // set_vlm_masks_history();
+    set_masks_history(current_status_bitap->patlist, his.incr_macro);
   }
   
 }
@@ -331,21 +331,21 @@ uint64_t *step_history(void)
     }
 
     /* are all checks of the vlm zero */
-    for(i = 0; i < his.incr_vlm; i++)
+    for(i = 0; i < (his.incr_vlm / pattern_check_size); i++)
     {
       check |= *reg;
       reg++;
       check |= *reg;
-      reg += 2;
+      reg += 3;
     }
 
     /* are all checks of the pattern bitap zero */
-    for(i = 0; i < his.incr_pattern; i++)
+    for(i = 0; i < (his.incr_pattern / pattern_check_size); i++)
     {
       check |= *reg;
       reg++;
       check |= *reg;
-      reg += 2;
+      reg += 3;
     }
     
     /* if all checks are zero then the buffer can be reduced */
@@ -356,29 +356,6 @@ uint64_t *step_history(void)
 
       check_history_size();
     }
-  }
-  
-  if(debug)
-  {
-    printf(" previous history, char = %c, his pos = %i, index = %i\n", his_inchar[his.position], his.position, his_index[his.position]);
-    reg = his_checks + his_index[his.position];
-    printf(" history macro checks:\n");
-    for(i = 0; i < his.incr_checks; i++)
-    {
-      print_bits(*reg);
-      reg++;
-    }
-    for(i = 0; i < his.incr_pattern; i++)
-    {
-      printf(" history pattern checks, mem, mask [%i]:\n",i);
-      print_bits(*reg);
-      reg++;
-      print_bits(*reg);
-      reg++;
-      print_bits(*reg);
-      reg++;
-    }
-    
   }
   
   
@@ -415,7 +392,7 @@ void print_history(void)
   int i;
   
   
-  if(debug)
+  if(debug | stephistory)
   {
     printf(" CURRENT history, char = %c, his pos = %i, index = %i\n", his_inchar[his.position], his.position, his_index[his.position]);
     reg = his_checks + his_index[his.position];
@@ -425,9 +402,11 @@ void print_history(void)
       print_bits(*reg);
       reg++;
     }
-    for(i = 0; i < his.incr_pattern; i++)
+    for(i = 0; i < (his.incr_pattern / pattern_check_size); i++)
     {
-      printf(" history pattern checks, mem, mask [%i]:\n",i);
+      printf(" history pattern checks, mem, mask, links [%i]:\n",i);
+      print_bits(*reg);
+      reg++;
       print_bits(*reg);
       reg++;
       print_bits(*reg);
@@ -662,38 +641,16 @@ void init_definition(char *def)
 }
 
 
-void init_process(char *filename, data_buffer *buf)
+void init_process(/*char *filename, data_buffer *buf*/)
 {
   
-  /* open output */
-  if(filename[0] == '-' && filename[1] == '\0')
-  {
-    /* stdout as output */
-    buf->file = STDOUT_FILENO;
-  }
-  else
-  {
-    /* open file for output */
-    buf->file = open(filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
-    if (buf->file < 0)
-    {
-      fprintf(stderr, "Error; can not open file for writing: %s\n", filename);
-      exit(Exit_io);
-    }
-  }
-  
-  output_buffer = buf;
-  
-  buf->position = 0;
-  buf->filename = filename;
-  buf->divnum = 0;
-
-
+  /* macro set 0 */
   new_vectorset("0",1);
   select_vectorset("0",1);
   
   /* reserve space for lists */
   init_macros();
+  init_macroparts();
   init_charstr();
   
   init_asciitohex();
@@ -710,11 +667,9 @@ void init_process(char *filename, data_buffer *buf)
   /* set characters for charstr function */
   current_charstr_chars = init_charstr_chars('[', ']', '-', '\\', '@', '+', '*', '?', '~');
 
-  /* set characters for argument placement */
-  // current_arg_chars = init_arg_chars('$', '*', '@', '#', '$');
-  // add_arg_to_vectors(current_vec, current_arg_chars);
 
-  
+  /* define first pattern (0) and macro (0_define) */
+ 
   start_local_stacks();
   push_str(0, "Pattern", 7);  /* first arg is calling name  */
   push_str(0, "0", 1);
@@ -773,6 +728,31 @@ void init_process(char *filename, data_buffer *buf)
 }
 
 
+void process_atfirst(data_buffer **buf)
+{
+  data_buffer *in;
+   
+  /* process the at first buffer */ 
+  in =  alloc_io_buffer(init_size_processbuf);
+  in->file = -1; /* so not real output, but a memory buffer */
+  in->position = 0;
+  in->divnum = 0;
+ 
+  output_diversion(-2, &in); /* at first buffer is diversion number -2 in the diversion list */
+
+  in->length = in->position;
+  in->position = 0;
+  
+  if(in->length > 0)
+  {
+    /* if data exists then process */
+    process_input(&in, buf, Run_macro_yes);
+  }
+  
+  xfree(in);
+ 
+}
+
 
 void close_process(data_buffer **buf)
 {
@@ -795,46 +775,9 @@ void close_process(data_buffer **buf)
   
   /* write possible remaining data */
   flush_all_diversions(buf);
-  write_output(buf, 0);
-  
-  if((*buf)->file != STDOUT_FILENO) /* if stdout do not close */
-  {
-    /* close file */
-    if(close((*buf)->file) < 0)
-    {
-      fprintf(stderr, "Error closing output file: %s\n", (*buf)->filename);
-      exit(Exit_io);
-    }
-  }
- 
-}
-
-
-void set_status_pat(status_pattern *stat_pat)
-{
-    pattern_masks *masks;
-    pattern_registers *patcheck;
-    int i;
-
-    masks = arglist->masks;
-
-    patcheck = (pattern_registers *)(his_checks + his_index[his.position] + his.incr_checks);
-
-    if(debug)
-    {
-      printf(" setting status of pattern, patcheck = %p,  his position = %i \n", patcheck, his.position);
-    }
-    for(i = 0 ; i < arglist->vec_size; i++)
-    {
-      patcheck[i].onetimemask = masks[i].mask;
-
-      if(debug)
-      {
-        print_bits(masks[i].mask);
-      }
-    }
 
 }
+
 
 static inline void reset_start_pat(status_pattern *stat_pat)
 {
@@ -863,9 +806,9 @@ void fill_arguments_pat(macro_def *macro, data_buffer **out)
   data_buffer *def;
   pattern_data *backup_arglist;
   arg_text_return ret;
-  int new_pat_size,
+  int /*new_pat_size,*/
       prev_local_position,
-      prev_pat_size,
+      // prev_pat_size,
       prev_his_position;
 
   
@@ -901,6 +844,7 @@ void fill_arguments_pat(macro_def *macro, data_buffer **out)
   backup_arglist = arglist;
 
   arglist = macro->filllist;  /* get the filllist from the macro  */
+  set_vlm_history();
   
   /* prepare status of pattern */
 
@@ -909,8 +853,8 @@ void fill_arguments_pat(macro_def *macro, data_buffer **out)
   /* only if filllist exists will arguments be filled, just to be sure */
   if(arglist != NULL)
   {
-    new_pat_size = arglist->vec_size;
-    prev_pat_size = set_pattern_history(new_pat_size);
+    // new_pat_size = arglist->vec_size;
+    // prev_pat_size = set_pattern_history(new_pat_size);
 
     prev_his_position = his.position;
     prev_local_position = his.local_begin;
@@ -919,19 +863,20 @@ void fill_arguments_pat(macro_def *macro, data_buffer **out)
     clear_step_history();
     his.local_begin = his.position;
     
-    set_status_pat(current_status_pattern);
+    // set_status_pat(current_status_pattern);
 
     
     process_input(&def, out, Run_macro_no);
 
     
-    set_pattern_history(prev_pat_size);
+    // set_pattern_history(prev_pat_size);
 
     his.position = prev_his_position;
     his.local_begin = prev_local_position;   
   }
   
   arglist = backup_arglist;
+  set_vlm_history();
   
   xfree(def);
 
@@ -1229,6 +1174,7 @@ void macro_or_call(macro_def *macro, data_buffer *arg_out, data_buffer **in, dat
     oldvecset = current_status_bitap;
      // fprintf(stderr, "old macro set: %s  %p\n", current_status_bitap->name, current_word15); 
     set_vectorset(macro->mcallset);
+    set_vlm_history(); 
     
     // fprintf(stderr, "new macro set: %s  %p\n", current_status_bitap->name, current_word15); 
 
@@ -1288,6 +1234,7 @@ void macro_or_call(macro_def *macro, data_buffer *arg_out, data_buffer **in, dat
 
     /* switch back to previous macro set */ 
     set_vectorset(oldvecset);
+    set_vlm_history(); 
     
   }
 
@@ -1373,6 +1320,11 @@ void exec_macrocall(int index, data_buffer *arg_out, data_buffer **in, data_buff
    */
   if((*output)->divnum != out->divnum)
   {
+    if(debug | stepdebug)
+    {
+      printf("++++Divnum changed flushing output\n");
+    }
+  
     flush_output(output);
     if(out->divnum > 0)
     {
@@ -1381,20 +1333,30 @@ void exec_macrocall(int index, data_buffer *arg_out, data_buffer **in, data_buff
   }
   (*output)->divnum = out->divnum;
 
+  /* set previous input buffer */
+  out->prev = *in;  
 
   if(recur == Recursive_yes)
   {
     
-      if(debug)
-      {
-        printf(" running recursive inpos: %i outpos: %i\n",out->position, (*output)->position);
-      }
       
       /* start macro processor */
       arglist = NULL;
-      set_pattern_history(0);
+      // set_pattern_history(0);
+      set_vlm_history(); 
       step_history();
       clear_step_history();
+
+      if(debug | stepdebug)
+      {
+        printf("Macrocall running recursive inpos: %i outpos: %i\n",out->position, (*output)->position);
+      }
+
+      if(stepdebug)
+      {
+        print_buf_info(out, stdout);
+        print_buf_info(*output, stdout);
+      }
 
       process_input(&out, output, Run_macro_yes);
       
@@ -1442,6 +1404,46 @@ void exec_macrocall(int index, data_buffer *arg_out, data_buffer **in, data_buff
 
 }
 
+/* function to be called when the input buffer position < 0
+ * 
+ * this can happen when:
+ * 1. A macro is called during the recursive expansion of a macro definition and
+ * 2. The macro post size is lager than the input buffer: the post size of a macro
+ *    starts before the macro called before.
+ */
+void prefix_in_buffer(data_buffer **in, int back)
+{
+  int i,
+      extra;
+  
+  extra = - (*in)->position;
+  
+  /* reserve extra if buffer size is to small to add extra */
+  *in = reserve_buffer(*in, extra);
+  
+  /* move data */
+  for(i = ((*in)->length - 1); i >= 0; i--)
+  {
+    (*in)->data[i + extra] = (*in)->data[i];
+  }
+  
+  /* prefix data */
+  for(i = 0; i < extra; i++)
+  {
+    (*in)->data[i] = his_inchar[his.position - back + i];
+  }
+  
+  (*in)->position = 0;
+  (*in)->length += extra;
+  
+  fprintf(stderr," Internal error, position in input buffer negative\n");
+        print_buf_info(*in, stderr);
+        print_buf_info((*in)->prev, stderr);
+
+        
+        
+}
+
 
 /* function to execute all variants of macros
  * 
@@ -1482,9 +1484,9 @@ void exec_macro(int index, int macro_len, data_buffer **input, data_buffer **out
   macro_def *macro;
   int macro_size,
       post_size,
-      new_pat_size,
+      // new_pat_size,
       prev_local_position,
-      prev_pat_size,
+      // prev_pat_size,
       prev_his_position,
       max_reserve;
   macro_option_recursive recur;
@@ -1516,6 +1518,7 @@ void exec_macro(int index, int macro_len, data_buffer **input, data_buffer **out
   
   if(macro->post_size < 0)
   {
+    /* this is for vlm from start */
     macro_size = macro_len - macro->pre_size;
 
     post_size = macro_len - macro->pre_size;
@@ -1565,7 +1568,7 @@ void exec_macro(int index, int macro_len, data_buffer **input, data_buffer **out
   
   reset_status_pat(&new_stat_pat);
   
-  if(arglist != NULL)
+ /* if(arglist != NULL)
   {
     new_pat_size = arglist->vec_size;
   }
@@ -1573,27 +1576,29 @@ void exec_macro(int index, int macro_len, data_buffer **input, data_buffer **out
   {
     new_pat_size = 0;
   }
+ */
   prev_his_position = his.position - (macro_len - macro->pre_size);
   
   prev_local_position = his.local_begin;
   
-  prev_pat_size = set_pattern_history(new_pat_size);
+  // prev_pat_size = set_pattern_history(new_pat_size);
+  set_vlm_history();
   step_history();
   clear_step_history();
   his.local_begin = his.position;
   
   if(debug)
   {
-    printf(" rewinding history to: %i, with prev pattern size: %i, and new pattern size: %i\n", prev_his_position, prev_pat_size, new_pat_size);
+    printf(" rewinding history to: %i\n", prev_his_position);
   }
   
   /* only if arglist exists will arguments be collected */ 
   if(arglist != NULL)
   {
     /* reserve space for registers of algo */
-    set_status_pat(&new_stat_pat);
+    // set_status_pat(&new_stat_pat);
     
-    print_history();
+    // print_history();
     
     /* back up pos in input to real end of macro */
     (*input)->position -= post_size - 1; /* next char in input */
@@ -1611,13 +1616,33 @@ void exec_macro(int index, int macro_len, data_buffer **input, data_buffer **out
         }
         read_input(input, max_reserve);
       }
-      /* else end of input memory buffer, this should not happen */
+      else
+      {
+        /* else end of input memory buffer, this should normally not happen */
+        if((*input)->position > (*input)->length)
+        {
+          fprintf(stderr," Internal error, input buffer\n");
+          print_buf_info(*input, stderr);
+        }
+      }
     }
-    
+
+    if((*input)->position < 0)
+    {
+      prefix_in_buffer(input, post_size);
+    }
+
     /* for proper line counting */
     line_count_flag = -post_size;
+
+    if(stepdebug)
+    {
+       print_buf_info(*input, stdout);
+       print_buf_info(arg_out, stdout);
+    }
     
-    /* trick to skip macro expansion in the first number of chars */
+    /* process the input for argument collection
+     * trick to skip macro expansion in the first number of chars */
     if(macro->arg_type == Run_macro_yes)
     {
       process_input(input, &arg_out, macro->arg_type + post_size);
@@ -1704,14 +1729,15 @@ void exec_macro(int index, int macro_len, data_buffer **input, data_buffer **out
   his.position = prev_his_position;
   
   his.local_begin = prev_local_position;
-  
-  set_pattern_history(prev_pat_size);
+
+  // set_pattern_history(prev_pat_size);
+  set_vlm_history();
   check_history_size();
   
   
   if(debug)
   {
-    printf(" resetting history to: %i with pattern size = %i\n", his.position, prev_pat_size);
+    printf(" resetting history to: %i\n", his.position);
   }
   
   /* finally copy the result to the output 
@@ -1743,6 +1769,11 @@ void exec_macro(int index, int macro_len, data_buffer **input, data_buffer **out
    */
   if((*output)->divnum != out->divnum)
   {
+    if(debug | stepdebug)
+    {
+      printf("++++Divnum changed flushing output\n");
+    }
+  
     flush_output(output);
     if(out->divnum > 0)
     {
@@ -1751,15 +1782,23 @@ void exec_macro(int index, int macro_len, data_buffer **input, data_buffer **out
   }
   (*output)->divnum = out->divnum;
 
-    
+  /* set previous input buffer */
+  out->prev = *input;  
+  
   if(recur == Recursive_yes)
   {
     
-      if(debug)
+      if(debug | stepdebug)
       {
-        printf(" running recursive inpos: %i outpos: %i\n",out->position, (*output)->position);
+        printf(" Macro running recursive inpos: %i outpos: %i\n",out->position, (*output)->position);
       }
-      
+
+      if(stepdebug)
+      {
+        print_buf_info(out, stdout);
+        print_buf_info(*output, stdout);
+      }
+
       /* start macro processor */
       process_input(&out, output, Run_macro_yes);
     
@@ -1837,16 +1876,23 @@ uint64_t run_pattern(int vec_size, pattern_masks *masks, pattern_vectors (*vec),
     
     /* the shift of the bitap for new step */
     patcheck[vecnum].check = prev_patcheck[vecnum].check << 1;
-    if((vecnum > 0) && (prev_patcheck[vecnum - 1].check & (0b1ULL << 63)))
+    if((vecnum > 0) && (prev_patcheck[vecnum - 1].check & (0b1ULL << 63)) )
     {
       patcheck[vecnum].check |= 0b1ULL;
     }
 
+    /* reset the first character of an intermediate search word */
+    patcheck[vecnum].check &= masks[vecnum].clearinit;
     
     /* the first (main) part bitap */
+    /* set the bits from the linking */
+    patcheck[vecnum].check |= prev_patcheck[vecnum].links;
+    /* and init next linking */
+    patcheck[vecnum].links = 0ULL;
+
     /* bitap check with memory for one or more characters */
     patcheck[vecnum].check |= (patcheck[vecnum].mem << 1);
-    if((vecnum > 0) && (patcheck[vecnum - 1].mem & (0b1ULL << 63)))
+    if((vecnum > 0) && (patcheck[vecnum - 1].mem & (0b1ULL << 63)) )
     {
       patcheck[vecnum].check |= 0b1ULL;
     }
@@ -1854,6 +1900,7 @@ uint64_t run_pattern(int vec_size, pattern_masks *masks, pattern_vectors (*vec),
     /* initialise the first character of a search word */
     patcheck[vecnum].check |= masks[vecnum].init;
 
+    
     /* bitap check for zero characters */
     if((vecnum > 0) && ((patcheck[vecnum - 1].check & masks[vecnum - 1].zeromask) & (0b1ULL << 63)))
     {
@@ -1886,93 +1933,368 @@ uint64_t run_pattern(int vec_size, pattern_masks *masks, pattern_vectors (*vec),
 
 
 
-int get_vlm_length(int vecnum, int entry)
+int get_vlm_part_length(int *vecnum, int entry, vlm_recovery_option recov_len, int his_position, uint64_t *prev_mask)
 {
   uint64_t mask,
            zeromask,
            check,
-           memory,
-           prev_mask = 0ULL;
-  int len = 0,
+           memory = 0ULL;
+  int len,
       mask_len,
-      his_position;
+      his_position_start;
+  int find_shortest = 0;
   
-  mask = current_status_bitap->patlist->masks[vecnum].masks[entry];
-  mask_len = current_status_bitap->patlist->masks[vecnum].masks_run_patlen[entry];
-  zeromask = current_status_bitap->patlist->masks[vecnum].zeromask;
-
-  his_position = his.position;
   
-  while(mask_len > 0)
-  {
-    check = his_checks[his_index[his_position] + his.incr_macro + his.incr_vlm * vecnum];
-    memory = his_checks[his_index[his_position] + his.incr_macro + his.incr_vlm * vecnum + 1];
+  
+  mask = current_status_bitap->patlist->masks[*vecnum].masks[entry];
+  mask_len = current_status_bitap->patlist->masks[*vecnum].masks_run_patlen[entry];
+  zeromask = current_status_bitap->patlist->masks[*vecnum].zeromask;
+  *prev_mask = 0ULL;
 
-    if(mask == 0ULL)
+  
+  his_position_start = his_position;
+  
+    if(recov_len == Vlm_len_fixed)
     {
-      vecnum--;
-      if(vecnum >= 0)
+      len = mask_len;
+      // his_position -= mask_len;
+      // *prev_mask = mask >> (mask_len -1);
+      *prev_mask = mask;
+      
+      while(mask_len > 1)
       {
-        zeromask = current_status_bitap->patlist->masks[vecnum].zeromask;
-      }
-      mask = 1ULL << 63;
-    }
-
-    prev_mask = mask;
-    
-    if(mask & check)
-    {
-      /* check bit set */
-      mask >>= 1;
-      his_position--;
-      mask_len--;
-    }
-    else
-    {
-      if(mask & memory)
-      {
-        /* memory bit set */
-        his_position--;
-      }
-      else
-      {
-        if(mask & zeromask)
+        mask_len--;
+        if(*prev_mask == 0ULL)
         {
-          /* zero bit mask set */
-          mask >>= 1;
-          mask_len -= 1;
+          (*vecnum)--;
+          if(*vecnum < 0)
+          {
+            fprintf(stderr, "internal error in vlm fixed length determination, mask ran out.\n");
+            break;
+          }
+          *prev_mask = 1ULL << 63;
         }
         else
         {
-          fprintf(stderr, "error in vlm length\n");
-          break;
+          (*prev_mask) >>= 1;
         }
       }
+      // mask >>= mask_len;
+      // fprintf(stderr, "fixed vlm len: %i\n", len);
     }
-  }
-
-  /* if the first macro character can be more than one check previous positions */ 
-  if(prev_mask & memory)
-  {
-    /* find the longest fit */
-    do
+    else
     {
-      check = his_checks[his_index[his_position] + his.incr_macro + his.incr_vlm * vecnum];
-      his_position--;
-    } while( prev_mask & check);
-    
-    his_position++;
-  }
+      
+      while(mask_len > 0)
+      {
+        
+        if(mask == 0ULL)
+        {
+          (*vecnum)--;
+          if(*vecnum >= 0)
+          {
+            zeromask = current_status_bitap->patlist->masks[*vecnum].zeromask;
+          }
+          else
+          {
+            fprintf(stderr, "internal error in vlm length determination, mask ran out.\n");
+            break;
+          }
+          mask = 1ULL << 63;
+        }
+        
+        check = his_checks[his_index[his_position] + his.incr_macro + pattern_check_size * *vecnum];
+        memory = his_checks[his_index[his_position] + his.incr_macro + pattern_check_size * *vecnum + 1];
+        
+        if(debug)
+        {
+          printf(" vlm length pos: %i, char: %c, history mask, check, mem, zero, masklen: %i\n", his_position, his_inchar[his_position], mask_len);
+          print_bits(mask);
+          print_bits(check);
+          print_bits(memory);
+          print_bits(zeromask);
+          fflush(stdout);
+        }
+        
+        *prev_mask = mask;
+        
+        
+        if((recov_len == Vlm_len_short) || (recov_len == Vlm_len_short_extended))
+        {
+          switch(find_shortest)
+          {
+            case 2:
+              if(mask & zeromask)
+              {
+                /* zero bit mask set */
+                // his_position--;
+                mask >>= 1;
+                mask_len -= 1;
+                
+                find_shortest = 1;
+                if(debug)
+                {
+                  printf(" zero bit set going to find end.\n");
+                }
+                
+              }
+              else
+              {
+                if(debug)
+                {
+                  printf(" stop find shortest, no zero.\n");
+                }
+                find_shortest = 0;
+              }
+              break;
+            case 1:
+              if(mask & ~(check | zeromask | memory) )
+              {
+                his_position--;
+                if(debug)
+                {
+                  printf(" finding check | mem | zero bit next pos: %i, char: %c\n", his_position, his_inchar[his_position] );
+                }
+              }
+              else
+              {
+                find_shortest = 0;
+                if(debug)
+                {
+                  printf(" stopping finding pos: %i, char: %c\n", his_position, his_inchar[his_position] );
+                }
+              }
+              break;
+            default:
+              
+              if(mask & check)
+              {
+                /* check bit set */
+                mask >>= 1;
+                his_position--;
+                mask_len--;
+                
+                find_shortest = 2;
+                if(debug)
+                {
+                  printf(" check bit set going to test zeros.\n");
+                }
+              }
+              else
+              {
+                if(mask & memory)
+                {
+                  /* memory bit set */
+                  his_position--;
+                  if(debug)
+                  {
+                    printf(" mem bit set next pos.\n");
+                  }
+                  
+                }
+                else
+                {
+                  if(mask & zeromask)
+                  {
+                    /* zero bit mask set */
+                    mask >>= 1;
+                    mask_len -= 1;
+                    if(debug)
+                    {
+                      printf(" zero bit set next mask bit.\n");
+                    }
+                    find_shortest = 1;
+                    
+                  }
+                  else
+                  {
+                    fprintf(stderr, "error in vlm short length determination.\n");
+                    if(debug)
+                    {
+                      printf("-------->  error in vlm short length determination. %i, char: %c\n", his_position, his_inchar[his_position] );
+                    }
+                    mask_len = 0;
+                    break;
+                  }
+                }
+                
+                
+              }
+          }
+        }
+        
+        if(recov_len == Vlm_len_long)
+        {
+          if(mask & memory)
+          {
+            /* there is also memory bit set, so following the memory */
+            his_position--;
+          }
+          else
+          {
+            if(mask & check)
+            {
+              /* check bit set */
+              mask >>= 1;
+              his_position--;
+              mask_len--;
+            }
+            else
+            {
+              if(mask & zeromask)
+              {
+                /* zero bit mask set */
+                mask >>= 1;
+                mask_len -= 1;
+              }
+              else
+              {
+                fprintf(stderr, "error in vlm long length determination.\n");
+                mask_len = 0;
+                break;
+              }
+            }
+          }
+        }
+      }
+      
+      
+      /* if the first macro character can be more than one check previous positions */ 
+      if( (recov_len == Vlm_len_short_extended) && (*prev_mask & (memory | zeromask)) )
+      {
+        /* find the longest fit */
+        do
+        {
+          check = his_checks[his_index[his_position] + his.incr_macro + his.incr_vlm * *vecnum];
+          his_position--;
+        } while( *prev_mask & check);
+        
+        his_position++;
+      }
+      
+      len = his_position_start - his_position;
+      
+      // fprintf(stderr, "variable vlm len: %i mask: %lu\n", len, mask);
+    }
   
-  len = his.position - his_position;
   return(len);
 }
+
+
+
+int get_vlm_length(int vecnum, int entry, int macro_num)
+{
+  pattern_data *patlist;
+  uint64_t mask,
+           prev_mask,
+           links;
+  int his_position,
+      len;
+  vlm_recovery_parts recov_part,
+                     recov_part_continue;
+  vlm_recovery_option recov_len;
+  int i,
+      j;
+  
+  
+  patlist = current_status_bitap->patlist;
+  
+  /* set type of length determination */
+  recov_len = macro_list[macro_num].vlm_recov_len;
+  recov_part = macro_list[macro_num].vlm_recov_part;
+
+  his_position = his.position;
+  
+  do
+  {
+    
+    len =  get_vlm_part_length(&vecnum, entry, recov_len, his_position, &prev_mask);
+    
+    his_position -= len;
+    recov_part_continue = recov_part;
+    
+    /* go to the previous part? */
+    if(recov_part == Vlm_parts_prev)
+    {
+      /* find the previous part */
+      /* correct the mask (one to far) */
+      mask = prev_mask;
+      
+      links = his_checks[his_index[his_position] + his.incr_macro + pattern_check_size * vecnum + 3];
+      // linksmin = his_checks[his_index[his_position - 1] + his.incr_macro + pattern_check_size * vecnum + 3];
+      // linksplus = his_checks[his_index[his_position + 1] + his.incr_macro + pattern_check_size * vecnum + 3];
+      // fprintf(stderr, "links mask: %lu  min: %lu plus: %lu mask: %lu\n", links, linksmin, linksplus,  mask);
+      
+      if(mask & links) /* this check should normally not be necessary */
+      {
+        // fprintf(stderr,"links mask yes: %lu\n", links);
+        
+        i = 0;
+        while(i < patlist->vec_size)
+        {
+          j = 0;
+          while(j < patlist->masks[i].masks_end)
+          {
+            if(patlist->masks[i].links[j] != NULL)
+            {
+              // fprintf(stderr," link: %lu mask: %lu\n", patlist->masks[i].links[j]->linkpat[vecnum], mask);
+              if( patlist->masks[i].links[j]->linkpat[vecnum] & mask)
+              {
+                /* found possible link */
+                /* check if this one triggered */
+                // fprintf(stderr," check: %lu mask: %lu\n", his_checks[his_index[his_position] + his.incr_macro + pattern_check_size * i], patlist->masks[i].masks[j]);
+                if(his_checks[his_index[his_position] + his.incr_macro + pattern_check_size * i] & patlist->masks[i].masks[j])
+                {
+                  /* this entry triggered */
+                  // fprintf(stderr,"found trigger: %i  %i\n", i, j);
+                  
+                  macro_num = patlist->masks[i].masks_run[j];
+                  vecnum = i;
+                  entry = j;
+                  
+                  if(macro_num >= 0)
+                  {
+                    
+                    recov_len = macro_list[macro_num].vlm_recov_len;
+                    recov_part = macro_list[macro_num].vlm_recov_part;
+                  }
+                  else
+                  {
+                    recov_len = macropart_list[-macro_num].vlm_recov_len;
+                    recov_part = macropart_list[-macro_num].vlm_recov_part;
+                  }  
+                }
+              }
+            }
+            j++;
+          }
+          
+          i++;
+        }
+      }
+      else
+      {
+        recov_part_continue = Vlm_parts_stop;
+      }
+
+    }
+    
+  } while(recov_part_continue == Vlm_parts_prev);
+  
+  len = his.position - his_position;
+  
+  return(len);
+}
+
+
+
 
 static inline void run_vlm_check(int *len, int *macro_num,  pattern_masks *masks, pattern_registers *patcheck, type_of_macro *macro_type)
 {
   uint64_t arg_result;
   int j,
-  vecnum;
+      i,
+      vecnum;
   
   
   /* find vlm macro */
@@ -1988,32 +2310,66 @@ static inline void run_vlm_check(int *len, int *macro_num,  pattern_masks *masks
       {
         if((masks[vecnum].masks[j] & arg_result) != 0LL) 
         {
-          /* found the vlm macro */
-          *macro_num = masks[vecnum].masks_run[j];
-          *macro_type = Variable_length_macro;
-          // *len = masks[vecnum].masks_run_patlen[j];
-          *len = get_vlm_length(vecnum, j);
-          j = masks[vecnum].masks_end; /* end the loop */
 
+          /* found the vlm macro or part */
+          *macro_num = masks[vecnum].masks_run[j];
+          if(*macro_num >= 0)
+          {
+            /* found macro */
+            *macro_type = Variable_length_macro;
+            *len = get_vlm_length(vecnum, j, *macro_num);
+  
+            j = pattern_size_masks; /* end the loop */
+          }
+          else
+          {
+            /* found macro part
+             * set links             
+             */
+            if(masks[vecnum].links[j] != NULL)
+            {
+              if(stepdebug)
+              {
+                printf(" LINKING to reg = linkpat, links \n");
+              }
+              
+              for(i = 0; i < masks[vecnum].links[j]->size; i++)
+              {
+                patcheck[i].links |= masks[vecnum].links[j]->linkpat[i];
+                
+                if(stepdebug)
+                {
+                  print_bits(masks[vecnum].links[j]->linkpat[i]);
+                  print_bits(patcheck[i].links);
+                  
+                }
+              }
+            }
+
+          }
+          
           if(debug)
           {
-            printf("len: %i  macronum: %i", *len, *macro_num);
+            printf("len: %i  macronum: %i  vecnum: %i index: %i\n", *len, *macro_num, vecnum, j);
           }
+
+
         }
         j++;
       }
     }
+  
     vecnum++;
   }
-  
-  
+ 
 }  
 
 static inline void run_pat_check(int macro_num, run_macro *runmacro,  int *arg_level,  pattern_masks *masks, pattern_registers *patcheck, data_buffer **buffer, data_buffer **output, arg_run *stop)
 {
   uint64_t arg_result;
   int j,
-  vecnum;
+      i,
+      vecnum;
   
   if(macro_num >= 0)
   {
@@ -2042,6 +2398,12 @@ static inline void run_pat_check(int macro_num, run_macro *runmacro,  int *arg_l
               *stop = exec_program(masks[vecnum].masks_run[j], -(masks[vecnum].masks_run_patlen[j]), current_status_pattern, output);
             }
             patcheck[vecnum].onetimemask &= ~(masks[vecnum].masks[j]);
+            
+            if(stepdebug)
+            {
+              printf(" one time trigger = %i, ", masks[vecnum].masks_run[j]);
+            }
+
           }
           else
           {
@@ -2050,8 +2412,34 @@ static inline void run_pat_check(int macro_num, run_macro *runmacro,  int *arg_l
             {
               *stop = exec_program(masks[vecnum].masks_run[j], masks[vecnum].masks_run_patlen[j], current_status_pattern, output);
             }
+
+            if(stepdebug)
+            {
+              printf(" pat prog = %i, ", masks[vecnum].masks_run[j]);
+            }
           }
 
+          /* set the links mask */
+          if(masks[vecnum].links[j] != NULL)
+          {
+            if(stepdebug)
+            {
+              printf(" LINKING to reg = linkpat, links \n");
+            }
+            for(i = 0; i < masks[vecnum].links[j]->size; i++)
+            {
+              patcheck[i].links |= masks[vecnum].links[j]->linkpat[i];
+
+              if(stepdebug)
+              {
+                 print_bits(masks[vecnum].links[j]->linkpat[i]);
+                 print_bits(patcheck[i].links);
+                 
+              }
+            }
+          }
+          
+          
           if(stop->status == arg_no_macros)
           {
             /* stop the execution of macros.
@@ -2061,7 +2449,7 @@ static inline void run_pat_check(int macro_num, run_macro *runmacro,  int *arg_l
             /* continu with pattern */
             stop->status = arg_continu;
           }
-
+          
           if(stop->status == arg_abort)
           {
             /* no argument collection, position input should be placed back
@@ -2072,12 +2460,22 @@ static inline void run_pat_check(int macro_num, run_macro *runmacro,  int *arg_l
             his.position -= (*output)->position;
           }
           
+          if(stop->status == arg_stop)
+          {
+            /* Maybe input should be placed back
+             * depending on returned value
+             */
+            (*buffer)->position -= stop->goback;
+            his.position -= stop->goback;
+          }
+          
         }
         j++;
 
       }
     }
   }
+  
   
 }  
 
@@ -2345,6 +2743,7 @@ void process_input(data_buffer **buffer, data_buffer **output, run_macro runmacr
     
     /* copy input to history buffer: necessary for complete macro name in call to macros */
     his_inchar[his.position] = inp;
+
     
     /* bitap algo for finding macros */
     if(runmacro >= Run_macro_yes)
@@ -2388,12 +2787,23 @@ void process_input(data_buffer **buffer, data_buffer **output, run_macro runmacr
           run_vlm_check(&len, &macro_num, current_status_bitap->patlist->masks, vlmcheck, &macro_type);
         }
       }
- 
-    }
 
+    
+    }
+ 
+    if(stepdebug)
+    {
+      printf(" Step: char = %c, macroset = %s, runmacro = %i,  macro = %i, macrolen = %i, his pos = %i, inp pos = %i, out pos = %i, ", inp, current_status_bitap->name, runmacro, macro_num, len, his.position, (*buffer)->position, (*output)->position);
+      fflush(stdout);
+    }
+ 
     /* bitap algo for argument collection */
     if(arglist != NULL)
     {
+      if(stepdebug)
+      {
+        printf(" arglist = %s, ", arglist->name);
+      }
       patcheck = (pattern_registers *)(current_check + his.incr_checks);
       prev_patcheck = (pattern_registers *)(prev_check + his.incr_checks);
 
@@ -2401,13 +2811,22 @@ void process_input(data_buffer **buffer, data_buffer **output, run_macro runmacr
       run_pat_check(macro_num, &runmacro, &arg_level, arglist->masks, patcheck, buffer, output, &stop);
 
     }
-    
-    if(debug)
+
+    if(stepdebug)
+    {
+      printf("\n");
+      fflush(stdout);
+    }
+
+    if(debug | stephistory)
     {
       print_history();
+      fflush(stdout);
     }
+    
     /* counting lines */
     run_count_lines(inp, buffer);
+
     
     /* run macro if applicable */
     run_macros(&runmacro, macro_num, macro_type, &arg_level, len, buffer, output);
@@ -2416,11 +2835,11 @@ void process_input(data_buffer **buffer, data_buffer **output, run_macro runmacr
     run_update_positions(buffer, output);
     
     /* trick to skip running macro for a first number of times */
-    if(runmacro > Run_macro_yes)
+/*    if(runmacro > Run_macro_yes)
     {
       runmacro--;
     }
-    
+ */   
   }
   
   

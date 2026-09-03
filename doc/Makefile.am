@@ -18,9 +18,10 @@
 
 AM_DISTCHECK_DVI_TARGET = pdf
 
-info_TEXINFOS = m0.texi m0algo.texi
+info_TEXINFOS = m0.texi m0algo.texi m0examples.texi
 m0_TEXINFOS = fdl-1.3.texi gpl-3.0.texi sds.texi chap_builtin.texi chap_programs.texi m4emu.texi m6emu.texi gpmemu.texi
 m0algo_TEXINFOS = fdl-1.3.texi gpl-3.0.texi
+m0examples_TEXINFOS = fdl-1.3.texi gpl-3.0.texi parser.texi preparser.texi parser1.texi parser2.texi parser3.texi
 AM_MAKEINFOHTMLFLAGS = --set-customization-variable SPLIT=chapter --css-ref=/manual.css
 
 m4emu.texi: $(builddir)/../emu/m4emu.texi
@@ -32,6 +33,21 @@ m6emu.texi: $(builddir)/../emu/m6emu.texi
 gpmemu.texi: $(builddir)/../emu/gpmemu.texi
 	cp $(builddir)/../emu/gpmemu.texi .
 
+
+preparser.texi: $(builddir)/../examples/preparser.texi
+	cp $(builddir)/../examples/preparser.texi .
+
+parser.texi: $(builddir)/../examples/parser.texi
+	cp $(builddir)/../examples/parser.texi .
+
+parser1.texi: $(builddir)/../examples/parser1.texi
+	cp $(builddir)/../examples/parser1.texi .
+
+parser2.texi: $(builddir)/../examples/parser2.texi
+	cp $(builddir)/../examples/parser2.texi .
+
+parser3.texi: $(builddir)/../examples/parser3.texi
+	cp $(builddir)/../examples/parser3.texi .
 
 man_MANS = $(srcdir)/m0.1
 EXTRA_DIST = $(man_MANS) gendocs_template

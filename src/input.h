@@ -18,6 +18,7 @@
 */
 
 #include <stdint.h>
+#include "sds.h"
 
 
 typedef struct data_buffer 
@@ -40,7 +41,8 @@ extern int line_counter,
 
 extern char *program_name;
 
-extern char *arg_options;
+extern sds arg_options;
+extern sds arg_options_local;
 
 extern data_buffer *current_input_file_buffer;
 
@@ -66,3 +68,5 @@ int read_input(data_buffer **, int);
 void clear_buffer(data_buffer *, int);
 
 void print_bits(long long int);
+
+void print_buf_info(data_buffer *, FILE *);

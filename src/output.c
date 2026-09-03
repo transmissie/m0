@@ -37,6 +37,7 @@
  * divnum > 0 are normal diversions
  * divnum == 0 is at last buffer
  * divnum == -1 empty diversion buffer
+ * divnum == -2 is at first buffer
  */
 
 typedef struct
@@ -52,7 +53,8 @@ diversion_entry (*div_data)[];
 int size_div_list,
     end_div_list,
     pos_div_list,
-    at_last_div_list = -1;
+    at_last_div_list = -1,
+    at_first_div_list = -1;
 
 
 int trace_file;
@@ -164,7 +166,17 @@ void open_diversion(int divnum, int from)
     }
     else
     {
-      at_last_div_list = i;
+      if(divnum == 0)
+      {
+        at_last_div_list = i;
+      }
+      else
+      {
+        if(divnum == -2)
+        {
+          at_first_div_list = i;
+        }
+      }
     }
   }
   else
@@ -175,7 +187,17 @@ void open_diversion(int divnum, int from)
     }
     else
     {
-      at_last_div_list = new_diversion_entry(divnum, last_found_div);
+      if(divnum == 0)
+      {
+        at_last_div_list = new_diversion_entry(divnum, last_found_div);
+      }
+      else
+      {
+        if(divnum == -2)
+        {
+        at_first_div_list = new_diversion_entry(divnum, last_found_div);
+        }
+      }
     }
   }
 
@@ -192,6 +214,8 @@ void putchars_buffer(uint8_t *in, int len, data_buffer **out)
   int j,
       max_reserve;
 
+  // printf(" putcharsbuffer in p: %p out p: %p out p[start]: %p\n", in, (*out)->data, (*out)->data + (*out)->position);
+
   for(j = 0; j < len; j++)
   {
     (*out)->data[(*out)->position] = *in;
@@ -200,6 +224,7 @@ void putchars_buffer(uint8_t *in, int len, data_buffer **out)
 
     if((*out)->position >= (*out)->size)
     {
+      // printf(" putcharsbuffer too small\n");
       if((*out)->file >= 0)
       {
         /* output to real file or stdout */
@@ -270,6 +295,23 @@ void flush_diversion(int divnum, data_buffer **out)
     }
   }
 
+}
+
+void output_diversion(int divnum, data_buffer **out)
+{
+  int i;
+
+  for(i = 0; i < end_div_list; i++)
+  {
+    if((*div_data)[i].divnum == divnum)
+    {
+      putchars_buffer((*div_data)[i].data, (*div_data)[i].length, out);
+      if(debug)
+      {
+        printf("output diversion num %i in list: %i\n", divnum, i);
+      }
+    }
+  }
 
 }
 
@@ -343,7 +385,17 @@ void write_diversion(uint8_t *buf, int len, int divnum)
   }
   else
   {
-    div_list = at_last_div_list;
+    if(divnum == 0)
+    {
+      div_list = at_last_div_list;
+    }
+    else
+    {
+      // if(divnum == -2)
+      {
+        div_list = at_first_div_list;
+      }
+    }
   }    
     
   while(togo > 0)
@@ -389,7 +441,17 @@ void write_diversion(uint8_t *buf, int len, int divnum)
   }
   else
   {
-    at_last_div_list = div_list;
+    if(divnum == 0)
+    {
+      at_last_div_list = div_list;
+    }
+    else
+    {
+      // if(divnum == -2)
+      {
+        at_first_div_list = div_list;
+      }
+    }
   }
 
 }
@@ -407,7 +469,22 @@ void write_in_at_last(uint8_t *in, int len)
   write_diversion(in, len, 0);
   
 }
+
+void write_in_at_first(uint8_t *in, int len)
+{
+
+  /* at first division is number -2 */
   
+  if(at_first_div_list < 0)
+  {
+    open_diversion(-2, 0);
+  }
+  
+  write_diversion(in, len, -2);
+  
+}
+
+
 void write_output(data_buffer **buf, int reserve)
 {
   int written_bytes,
@@ -418,6 +495,11 @@ void write_output(data_buffer **buf, int reserve)
   {
     /* need to increase the buffer to hold all data */
     *buf = incr_buffer(*buf, (reserve + output_buffer_size_reserve));
+  }
+
+  if(debug)
+  {
+    printf("\n-- trying to write to div: %i --\n", (*buf)->divnum);
   }
 
   
@@ -476,6 +558,51 @@ void flush_output(data_buffer **output)
   }
 }
 
+
+void open_output(char *filename, data_buffer *buf)
+{
+  
+  /* open output */
+  if(filename[0] == '-' && filename[1] == '\0')
+  {
+    /* stdout as output */
+    buf->file = STDOUT_FILENO;
+  }
+  else
+  {
+    /* open file for output */
+    buf->file = open(filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+    if (buf->file < 0)
+    {
+      fprintf(stderr, "Error; can not open file for writing: %s\n", filename);
+      exit(Exit_io);
+    }
+  }
+  
+  output_buffer = buf;
+  
+  buf->position = 0;
+  buf->filename = filename;
+  buf->divnum = 0;
+}
+
+
+void close_output(data_buffer **buf)
+{
+  /* write possible remaining data */
+  write_output(buf, 0);
+  
+  if((*buf)->file != STDOUT_FILENO) /* if stdout do not close */
+  {
+    /* close file */
+    if(close((*buf)->file) < 0)
+    {
+      fprintf(stderr, "Error closing output file: %s\n", (*buf)->filename);
+      exit(Exit_io);
+    }
+  }
+ 
+}
 
 
 void open_trace(char *filename)

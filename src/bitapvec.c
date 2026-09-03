@@ -141,8 +141,31 @@ status_bitap   *first_status_bitap = NULL,
 argument_chars *current_arg_chars;
 
 
-  
-  
+/* tags in pattern list */
+typedef union
+{
+  uint8_t  n8[8];
+  uint64_t n64;
+} tag_name;
+
+typedef struct tag_entry
+{
+  pattern_data *pat;         /* the pattern in which the tag is */
+  tag_name      name;        /* name of the pattern */
+  uint64_t      tag_mask;
+  int           pos_vec;     /* index of vector of position in the pattern to set */
+  int           pat_vector;  /* index to the masks[] */
+  int           pat_index;   /* index to the pattern program and links */
+} tag_entry;  
+
+tag_entry *tag_list = NULL;
+
+int size_tag_list = 0,
+    end_tag_list = 0;
+
+    
+    
+    
 argument_chars *init_arg_chars(uint8_t first, uint8_t all, uint8_t allq, uint8_t num, uint8_t firstalt)
 {
   argument_chars *new;
@@ -317,8 +340,7 @@ void select_vectorset(uint8_t *setname, int length)
   }
   else
   {
-    fprintf(stderr, "Error line: %i in file: %s line: %i; Can not select %*.*s: no such set exists.\n", line_counter, current_input_file_buffer->filename, local_line_counter, length, length, setname);
-    exit_code = Exit_user;
+    print_warning(Exit_user, "Can not select %.*s: no such set exists.\n", length, setname);
   }  
     
 }
@@ -337,8 +359,7 @@ void set_vectorset(status_bitap *new)
   }
   else
   {
-    fprintf(stderr, "Error line: %i in file: %s line: %i; Can not select macro set: no such set exists.\n", line_counter, current_input_file_buffer->filename, local_line_counter);
-    exit_code = Exit_user;
+    print_warning(Exit_user, "Can not select macro set: no such set exists.\n");
   }  
     
 }
@@ -363,6 +384,7 @@ void clear_patternvector(pattern_data (*pat_dat), int from)
       (*vec)[j][i] = 0ULL;
     }
     masks[j].init = 0ULL;
+    masks[j].clearinit = 0xffffffffffffffffULL;
     masks[j].mask = 0ULL;
     masks[j].starmask = 0ULL;
     masks[j].zeromask = 0ULL;
@@ -508,7 +530,7 @@ void add_to_patternvector(pattern_data (*pat_dat), int pattern, int program, int
   
   if (pattern_len < 1)
   {
-      fprintf(stderr, "Error line: %i in file: %s line: %i; length of pattern is 0.\n", line_counter, current_input_file_buffer->filename, local_line_counter);
+    print_warning(Exit_user, "length of pattern is 0.\n");
   }
   else
   {
@@ -527,7 +549,14 @@ void add_to_patternvector(pattern_data (*pat_dat), int pattern, int program, int
       /* the first position is set in the init vector */  
       masks[j].init |= set_bit_mask;
     }
+
     
+    if(append == pattern_end)
+    {
+      /* the first position is set in the init vector */  
+      masks[j].clearinit &= ~set_bit_mask;
+    }
+
     /* next entry should have the first character data */
     pattern++;
     
@@ -563,6 +592,7 @@ void add_to_patternvector(pattern_data (*pat_dat), int pattern, int program, int
           masks[j].masks_run[masks[j].masks_end] = program;
           masks[j].masks_run_patlen[masks[j].masks_end] = -pattern_len;  /* negative length for triggers */
           masks[j].masks_run_level[masks[j].masks_end] = level;
+          masks[j].links[masks[j].masks_end] = NULL;
       
           masks[j].masks_end++;
         }
@@ -578,6 +608,7 @@ void add_to_patternvector(pattern_data (*pat_dat), int pattern, int program, int
           masks[j].masks_run[masks[j].masks_end] = program;
           masks[j].masks_run_patlen[masks[j].masks_end] = pattern_len;
           masks[j].masks_run_level[masks[j].masks_end] = level;
+          masks[j].links[masks[j].masks_end] = NULL;
           masks[j].masks_end++;
         }
       }  
@@ -609,6 +640,218 @@ void add_to_patternvector(pattern_data (*pat_dat), int pattern, int program, int
 }
 
 
+  
+
+void link_patterns(int tag_from, int tag_to)
+{
+  pattern_data (*pat_dat);
+  int  vector,
+       index;
+  int i,
+      prev_size;
+
+  if((tag_from >= 0) && (tag_from < end_tag_list) && (tag_to >= 0) && (tag_to < end_tag_list))
+  {
+    pat_dat = tag_list[tag_from].pat;
+    vector = tag_list[tag_from].pat_vector;
+    index = tag_list[tag_from].pat_index;
+    
+    
+    /* tags should be in same pattern */
+    if(pat_dat == tag_list[tag_to].pat)
+    {
+      /* tag_from should have a pattern part */
+      if( vector >= 0)
+      {
+        /* check if link pattern exists, otherwise initiate */
+        if(pat_dat->masks[vector].links[index] != NULL)
+        {
+          /* check if links size is enough */
+          if(pat_dat->masks[vector].links[index]->size < pat_dat->vec_size )
+          {
+            /* increase size */
+            pat_dat->masks[vector].links[index] = xrealloc(pat_dat->masks[vector].links[index], sizeof(pattern_links) + (sizeof(uint64_t) * pat_dat->vec_size) );
+            
+            /* update */
+            prev_size = pat_dat->masks[vector].links[index]->size;
+            pat_dat->masks[vector].links[index]->size = pat_dat->vec_size;
+            /* and clear memory */
+            for(i = prev_size; i < pat_dat->vec_size; i++)
+            {
+              pat_dat->masks[vector].links[index]->linkpat[i] = 0ULL;
+            }
+          }
+        }
+        else
+        {
+          pat_dat->masks[vector].links[index] = xmalloc(sizeof(pattern_links) + (sizeof(uint64_t) * pat_dat->vec_size) );
+          
+          /* init */
+          pat_dat->masks[vector].links[index]->size = pat_dat->vec_size;
+          /* and clear memory */
+          for(i = 0; i < pat_dat->vec_size; i++)
+          {
+            pat_dat->masks[vector].links[index]->linkpat[i] = 0ULL;
+          }
+        }
+        
+        
+        /* set mask */
+        pat_dat->masks[vector].links[index]->linkpat[tag_list[tag_to].pos_vec] |= tag_list[tag_to].tag_mask; 
+        
+      }
+      else
+      {
+        print_warning(Exit_user, "Can not link pattern parts; Tag: %.*s has no associated pattern part.\n", 8, tag_list[tag_from].name);
+      }
+      
+    }
+    else
+    {
+      print_warning(Exit_user, "Can not link pattern parts; Tags: %.*s and %.*s are not in the same pattern.\n", 8, tag_list[tag_from].name, 8, tag_list[tag_to].name);
+    }  
+  }
+  else
+  {
+    print_warning(Exit_user, "Can not link pattern parts; Invalid tags.\n");
+  }
+  
+}
+
+int find_in_taglist(uint8_t *name, int len)
+{
+  int i;
+  tag_name findname;
+  
+  /* copy name */
+  if(len > 8)
+  {
+    len = 8;
+  }
+  
+  for(i = 0; i < len; i++)
+  {
+    findname.n8[i] = name[i];
+  }
+  /* and fill rest with space */
+  for(; i < 8; i++)
+  {
+    findname.n8[i] = ' ';
+  }
+
+  /* start searching from the back, this allows redefining a tag
+   * without rewriting the old tag.
+   */  
+  for(i = (end_tag_list - 1); i >= 0; i--)
+  {
+    if(findname.n64 == tag_list[i].name.n64)
+    {
+      break;
+    }
+  }
+  
+  return(i);
+}
+
+
+int find_in_taglist_w_pat(pattern_data (*pat_dat), uint8_t *name, int len)
+{
+  int i;
+  tag_name findname;
+  
+  /* copy name */
+  if(len > 8)
+  {
+    len = 8;
+  }
+  
+  for(i = 0; i < len; i++)
+  {
+    findname.n8[i] = name[i];
+  }
+  /* and fill rest with space */
+  for(; i < 8; i++)
+  {
+    findname.n8[i] = ' ';
+  }
+
+  /* start searching from the back, this allows redefining a tag
+   * without rewriting the old tag.
+   */  
+  for(i = (end_tag_list - 1); i >= 0; i--)
+  {
+    if((tag_list[i].pat == pat_dat) && (findname.n64 == tag_list[i].name.n64))
+    {
+      break;
+    }
+  }
+  
+  return(i);
+}
+
+
+void add_to_taglist(pattern_data (*pat_dat), uint8_t *name, int len)
+{
+  int i,
+      position;
+  
+  if(tag_list == NULL)
+  {
+    /* initialise */  
+    tag_list = xmalloc(sizeof(tag_entry) * init_size_tag_list);
+    
+    size_tag_list = init_size_tag_list;
+    end_tag_list = 0;
+  }
+  
+  if(end_tag_list >= size_tag_list)
+  {
+    /* increase tag_list size */
+    tag_list = xrealloc(tag_list, sizeof(tag_entry) * (size_tag_list + add_size_tag_list));
+    
+    size_tag_list += add_size_tag_list;
+  }
+  
+  /* copy name to name in tag_list */
+  if(len > 8)
+  {
+    len = 8;
+  }
+  
+  for(i = 0; i < len; i++)
+  {
+    tag_list[end_tag_list].name.n8[i] = name[i];
+  }
+  /* and fill rest with space */
+  for(; i < 8; i++)
+  {
+    tag_list[end_tag_list].name.n8[i] = ' ';
+  }
+  
+  tag_list[end_tag_list].pat = pat_dat;
+  
+  position = pat_dat->end;
+  tag_list[end_tag_list].pos_vec = position / 64;
+  tag_list[end_tag_list].tag_mask = 0b1ULL << (position % 64);
+
+  position--;
+  if(position >= 0)
+  {
+    tag_list[end_tag_list].pat_vector = position / 64;
+    tag_list[end_tag_list].pat_index = pat_dat->masks[tag_list[end_tag_list].pat_vector].masks_end - 1;
+  }
+  else
+  {
+    tag_list[end_tag_list].pat_vector = -1;
+    tag_list[end_tag_list].pat_index = -1;
+  }
+  
+  end_tag_list++;
+}
+
+
+
+
 void add_to_vectors2(vectors (*vec), int macro_name)
 {
    int i,
@@ -622,7 +865,7 @@ void add_to_vectors2(vectors (*vec), int macro_name)
    
    if ((macro_name_len < 1) || (macro_name_len > 64))
    {
-        fprintf(stderr, "Error line: %i in file: %s line: %i; length: %i of macro name wrong.\n ", line_counter, current_input_file_buffer->filename, local_line_counter, macro_name_len);
+     print_warning(Exit_user, "length: %i of macro name wrong.\n ", macro_name_len);
    }
    else
    {
@@ -889,11 +1132,14 @@ void delete_from_pattern(pattern_data *patlist, int vec_num, int vec_index)
       i--;
     }  
     
-    set_bit_mask = ~set_bit_mask;
     
     /* reset all */
     patlist->masks[vec_num].masks_run_patlen[vec_index] = 0;
     patlist->masks[vec_num].masks[vec_index] = 0ULL;
+
+    patlist->masks[vec_num].clearinit |= set_bit_mask;
+
+    set_bit_mask = ~set_bit_mask;
     
     patlist->masks[vec_num].init &= set_bit_mask;
     patlist->masks[vec_num].mask &= set_bit_mask;

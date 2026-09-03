@@ -40,7 +40,9 @@ extern trace_setting trace;
 
 void init_definition(char *def);
 
-void init_process(char *, data_buffer *);
+void init_process(/*char *, data_buffer **/ void);
+
+void process_atfirst(data_buffer **);
 
 void close_process(data_buffer **);
 

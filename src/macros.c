@@ -56,7 +56,12 @@ macro_def (*macro_list);
 int size_macro_list,
     end_macro_list;
 
+macro_part (*macropart_list);
 
+int size_macropart_list,
+    end_macropart_list;
+
+    
 char_range (*charstr);
 
 int size_charstr,
@@ -81,6 +86,7 @@ const builtins internal[] =
   {{"nop     "}, &nop},           /* 0 */
   {{"pattern "}, &add_pattern},
   {{"append_p"}, &append_pattern},
+  {{"inter_p "}, &inter_pattern},
   {{"clr_pat "}, &clear_pattern},
   {{"copy_pat"}, &copy_pattern},
   {{"push    "}, &push_macro},
@@ -107,6 +113,7 @@ const builtins internal[] =
   {{"get_var "}, &get_var},
   {{"set_var "}, &set_var},
   {{"at_last "}, &at_last},
+  {{"at_first"}, &at_first},
   {{"errprint"}, &print_error},
   {{"exit    "}, &exit_really},
   {{"strindex"}, &string_index},
@@ -114,7 +121,11 @@ const builtins internal[] =
   {{"substr  "}, &string_substr},
   {{"strtrans"}, &string_translate},
   {{"num2str "}, &number_to_string},
-  {{"program "}, &add_program}
+  {{"program "}, &add_program},
+  {{"tag_m   "}, &tag_macro_position},
+  {{"part_m  "}, &define_macro_part},
+  {{"tag_p   "}, &tag_pattern_position},
+  {{"link_prt"}, &link_patternparts}
 };
 
 
@@ -146,6 +157,17 @@ void init_macros(void)
   end_macro_list = 0;
     
 }
+
+void init_macroparts(void)
+{
+    
+  macropart_list = xmalloc(sizeof(macro_part) * init_size_macropart_list);
+  
+  size_macropart_list = init_size_macropart_list;
+  end_macropart_list = 1; /* start with 1 not 0 in array */
+    
+}
+
 
 void set_arg_chars(argument_chars *new, uint8_t first, uint8_t all, uint8_t allq, uint8_t num, uint8_t firstalt)
 {
@@ -518,6 +540,7 @@ int str_to_charstr(uint8_t *in, int length)
   return(start);  
 }
 
+
 void count_macros(int macrocounters[max_size_macro + 1])
 {
   int i;
@@ -650,7 +673,7 @@ ret_find_macro find_existing_macro(status_bitap *vecset, uint8_t *name, int macr
             }
 
             /* slow check */
-            if(memcmp(name, macro_list[vecset->patlist->masks[ret.vec_num].masks_run[i]].name, len) == 0)
+            if((vecset->patlist->masks[ret.vec_num].masks_run[i] >= 0) && (memcmp(name, macro_list[vecset->patlist->masks[ret.vec_num].masks_run[i]].name, len) == 0))
             {
               found = i;
               
@@ -968,6 +991,10 @@ void append_pattern(data_buffer **out)
   add_or_append_pattern(pattern_append);
 }
 
+void inter_pattern(data_buffer **out)
+{
+  add_or_append_pattern(pattern_end);
+}
 
 
 void clear_pattern(data_buffer **out)
@@ -1042,6 +1069,234 @@ void add_program(data_buffer **out)
 }
 
 
+void tag_pattern_position(data_buffer **out)
+{
+  arg_text_return pat_name,
+                  tag_name;
+  pattern_data *pattern;
+
+      
+  pat_name = argument_text(0, 1);  /* first arg is name of the pattern */
+ 
+  tag_name = argument_text(0, 2);  /* second arg is the name of the tag */
+  
+  pattern = find_patternvec(pat_name.str_p, pat_name.length);
+
+  if(pattern != NULL)
+  {
+    add_to_taglist(pattern, tag_name.str_p, tag_name.length);
+  }
+  else
+  {
+    print_warning(Exit_user, "pattern with name: %.*s does not exist. Can not perform pattern tagging.\n", pat_name.length, pat_name.str_p);
+  }
+  
+}
+
+/* vlm functions
+ *
+ */
+
+void link_patternparts(data_buffer **out)
+{
+  arg_text_return from_tag,
+                  to_tag;
+  int num_tags,
+      i,
+      from_index,
+      to_index;
+
+  from_tag = argument_text(0, 1);  /* first arg is from */
+ 
+  from_index = find_in_taglist(from_tag.str_p, from_tag.length);
+  
+  num_tags = current_status_pattern->num_of_args - 1;
+  
+  for(i = 0; i < num_tags; i++)
+  {
+    to_tag = argument_text(0, (2 + i));  /* second arg and later is to */
+    to_index = find_in_taglist(to_tag.str_p, to_tag.length);
+
+    link_patterns(from_index, to_index);
+  }
+  
+}
+
+
+void tag_macro_position(data_buffer **out)
+{
+  arg_text_return ret,
+                  tag_name;
+  status_bitap *vecset;
+
+ 
+  tag_name = argument_text(0, 1);  /* first arg is the name of the tag */
+
+  /* vectorset name */
+  /* second argument is the optional vectorset name */
+  ret = argument_text(0, 2);
+  
+  if(ret.length > 0)
+  {
+    vecset = find_or_new_vectorset(ret.str_p, ret.length);
+  }
+  else
+  {
+    vecset = current_status_bitap;
+    
+  }
+
+  if(vecset->patlist == NULL) 
+  {
+    vecset->patlist = init_patternvectors("", 0);  /* should not be found by pattern search */
+  }
+  
+  add_to_taglist(vecset->patlist, tag_name.str_p, tag_name.length);
+  
+}
+
+
+void define_macro_part(data_buffer **out)
+{
+  arg_text_return ret;
+  int macro_name,
+      macro_name_len;
+  uint8_t *name;
+  int name_len;
+  vlm_recovery_option         vlm_recov_len;
+  vlm_recovery_parts          vlm_recov_parts;
+  pattern_append_option       vlm_type;
+  status_bitap *vecset;
+
+
+  /* first argument is the name of the macro part */
+  ret = argument_text(0, 1);
+  
+  name = ret.str_p;
+
+  name_len = ret.length;
+
+  macro_name = str_to_charstr(ret.str_p, ret.length);
+  
+  macro_name_len = (charstr[macro_name]).data.size;
+
+  if(debug)
+  {
+    printf(" macro part name %.*s %i, %.*s len: %i\n", ret.length, ret.str_p, macro_name, name_len, name, macro_name_len);
+  }
+ 
+  
+  /* vlm options */
+  /* second argument is the optional vlm options */
+  ret = argument_text(0, 2);
+
+  vlm_recov_len = Vlm_len_long; 
+  vlm_recov_parts = Vlm_parts_prev;
+  vlm_type = pattern_end;
+  
+  /* option string should have length 2 otherwise it is not valid */
+  if(ret.length == 2)
+  {
+    /* first char for length */
+    switch(ret.str_p[0])
+    {
+      case 'L':
+        vlm_recov_len = Vlm_len_long;
+        break;
+      case 'E':
+        vlm_recov_len = Vlm_len_short_extended;
+        break;
+      case 'S':
+        vlm_recov_len = Vlm_len_short;
+        break;
+      case 'F':
+        vlm_recov_len = Vlm_len_fixed;
+        break;
+    }
+    
+    /* second char for macro start and part */
+    switch(ret.str_p[1])
+    {
+      case 's':
+        vlm_recov_parts = Vlm_parts_stop;
+        vlm_type = pattern_no_append;
+        break;
+      case 'i':
+        vlm_recov_parts = Vlm_parts_stop;
+        vlm_type = pattern_end;
+        break;
+      case 'l':
+        vlm_recov_parts = Vlm_parts_prev;
+        vlm_type = pattern_end;
+        break;
+    }
+  }
+  else
+  {
+    if(ret.length > 0)
+    {
+      print_warning(Exit_user, "Vlm options (%.*s) length incorrect. Setting options to default.\n", ret.length, ret.str_p);
+    }
+    
+  }
+
+  
+  /* vectorset name */
+  /* third argument is the optional vectorset name */
+  ret = argument_text(0, 3);
+  
+  if(ret.length > 0)
+  {
+    vecset = find_or_new_vectorset(ret.str_p, ret.length);
+  }
+  else
+  {
+    vecset = current_status_bitap;
+  }
+
+  
+  
+  if((macro_name_len > 0) && (macro_name_len <= 64))
+  {  
+    /* the length of the macro can fit */
+    
+    /* check for enough space in current list */
+    if(end_macropart_list >= size_macropart_list)
+    {
+      if(debug)
+      {
+        printf("macro part list is full! %i %i\n", size_macropart_list, end_macropart_list);
+      }
+      /* increase the size of the list */
+      macropart_list = xrealloc(macropart_list, sizeof(macro_part) * (size_macropart_list + add_size_macropart_list));
+      size_macropart_list += add_size_macropart_list;
+    }
+    
+    (macropart_list[end_macropart_list]).vlm_recov_len = vlm_recov_len;
+    (macropart_list[end_macropart_list]).vlm_recov_part = vlm_recov_parts;
+    (macropart_list[end_macropart_list]).name = sdsnewlen(name, name_len);
+    (macropart_list[end_macropart_list]).name_len = macro_name_len;
+    
+    
+    if(vecset->patlist == NULL) 
+    {
+      vecset->patlist = init_patternvectors("", 0);  /* should not be found by pattern search */
+    }
+    
+    /* macro parts have a negative index in the macro index */
+    add_to_patternvector(vecset->patlist, macro_name, -end_macropart_list, 0, vlm_type);
+    
+    end_macropart_list++;
+  }
+  else
+  {
+    print_warning(Exit_user, "length: %i of macro part name: %.*s is incorrect. This macro is thus not defined.\n", macro_name_len, name_len, name);
+  }
+
+  /* remove macro name from memory */
+  reduce_charstr(macro_name);
+  
+}
 
 /* define macros
  *
@@ -1073,6 +1328,7 @@ void add_program(data_buffer **out)
 
 void defpush_macro(int defpush, int defcall)
 {
+  int is_vlm = 0;
   int macro_name,
       macro_name_len,
       macro_exist,
@@ -1083,7 +1339,10 @@ void defpush_macro(int defpush, int defcall)
   uint8_t *definition;
   int def_len;
   int internalfunction;
-  macro_option_recursive macro_recursive;
+  macro_option_recursive      macro_recursive;
+  vlm_recovery_option         vlm_recov_len;
+  vlm_recovery_parts          vlm_recov_parts;
+  pattern_append_option       vlm_type;
   run_macro arg_recursive;
   int pre_size,
       post_size;
@@ -1111,6 +1370,7 @@ void defpush_macro(int defpush, int defcall)
   if(debug)
   {
     printf(" macro name %.*s %i, %.*s len: %i\n", ret.length, ret.str_p, macro_name, name_len, name, macro_name_len);
+    fflush(stdout);
   }
   
   /* second argument is the definition of the macro or name of the called macro*/
@@ -1210,8 +1470,16 @@ void defpush_macro(int defpush, int defcall)
     if(debug)
     {
       printf("valid macro options %i %i %i %i -%c-\n", macro_recursive, arg_recursive, pre_size, post_size, virtual_char);
+      fflush(stdout);
     }
     
+  }
+  else
+  {
+    if(ret.length > 0)
+    {
+      print_warning(Exit_user, "Macro options (%.*s) length incorrect. Setting options to default.\n", ret.length, ret.str_p);
+    }
   }
   
   /* fifth argument sets the argument pattern to be used */
@@ -1236,6 +1504,7 @@ void defpush_macro(int defpush, int defcall)
   if(debug)
   {
     printf(" argpattern pointer: %p\n", argpattern);
+    fflush(stdout);
   }
   
   /* fillpattern */
@@ -1267,6 +1536,7 @@ void defpush_macro(int defpush, int defcall)
   if(debug)
   {
     printf(" fillpattern pointer: %p\n", fillpattern);
+    fflush(stdout);
   }
 
   
@@ -1312,7 +1582,73 @@ void defpush_macro(int defpush, int defcall)
     vecset = current_status_bitap;
     
   }
+
   
+  
+  /* vlm options */
+  if(defcall == 0)
+  {
+    /* ninth argument is the optional vlm options */
+    ret = argument_text(0, 9);
+  }
+  else
+  {
+    /* eighth argument is the optional vlm options */
+    ret = argument_text(0, 8);
+  }
+
+  vlm_recov_len = Vlm_len_short_extended; 
+  vlm_recov_parts = Vlm_parts_stop;
+  vlm_type = pattern_no_append;
+  
+  /* option string should have length 2 otherwise it is not valid */
+  if(ret.length == 2)
+  {
+    /* if vlm option string exists, then always vlm */
+    is_vlm = 1;
+    
+    /* first char for length */
+    switch(ret.str_p[0])
+    {
+      case 'L':
+        vlm_recov_len = Vlm_len_long;
+        break;
+      case 'E':
+        vlm_recov_len = Vlm_len_short_extended;
+        break;
+      case 'S':
+        vlm_recov_len = Vlm_len_short;
+        break;
+      case 'F':
+        vlm_recov_len = Vlm_len_fixed;
+        break;
+    }
+    
+    /* second char for macro start and part */
+    switch(ret.str_p[1])
+    {
+      case 'n':
+        vlm_recov_parts = Vlm_parts_stop;
+        vlm_type = pattern_no_append;
+        break;
+      case 'e':
+        vlm_recov_parts = Vlm_parts_stop;
+        vlm_type = pattern_end;
+        break;
+      case 'l':
+        vlm_recov_parts = Vlm_parts_prev;
+        vlm_type = pattern_end;
+        break;
+    }
+  }
+  else
+  {
+    if(ret.length > 0)
+    {
+      print_warning(Exit_user, "Vlm options (%.*s) length incorrect. Setting options to default.\n", ret.length, ret.str_p);
+    }
+    
+  }
 
   
   if((macro_name_len > 0) && (macro_name_len <= 64))
@@ -1322,6 +1658,7 @@ void defpush_macro(int defpush, int defcall)
     if(debug)
     {
       printf("\n testing if macro already exists\n");
+      fflush(stdout);
     }
     
     /* does the macro already exist? */
@@ -1331,6 +1668,7 @@ void defpush_macro(int defpush, int defcall)
     if(debug)
     {
       printf("\n macro already exists place=%i\n", macro_exist);
+      fflush(stdout);
     }
     
     if(macro_exist >= 0)
@@ -1347,6 +1685,8 @@ void defpush_macro(int defpush, int defcall)
       
       /* fill in new macro data and definition */
       (macro_list[macro_exist]).recursive = macro_recursive;
+      (macro_list[macro_exist]).vlm_recov_len = vlm_recov_len;
+      (macro_list[macro_exist]).vlm_recov_part = vlm_recov_parts;
       (macro_list[macro_exist]).arg_type = arg_recursive;
       if(def_len >= 0)
       {
@@ -1372,6 +1712,7 @@ void defpush_macro(int defpush, int defcall)
      if(debug)
      {
        printf("\n change macro:%s def:%s: place=%i\n", (macro_list[macro_exist]).name, (macro_list[macro_exist]).def, macro_exist);
+       fflush(stdout);
      }
       
     }
@@ -1392,6 +1733,8 @@ void defpush_macro(int defpush, int defcall)
       }
       
       (macro_list[end_macro_list]).recursive = macro_recursive;
+      (macro_list[end_macro_list]).vlm_recov_len = vlm_recov_len;
+      (macro_list[end_macro_list]).vlm_recov_part = vlm_recov_parts;
       (macro_list[end_macro_list]).arg_type = arg_recursive;
       (macro_list[end_macro_list]).name = sdsnewlen(name, name_len);
       (macro_list[end_macro_list]).name_len = macro_name_len;
@@ -1420,9 +1763,22 @@ void defpush_macro(int defpush, int defcall)
       if(debug)
       {
         printf("\n add macro:%s def:%s: place=%i\n", (macro_list[end_macro_list]).name, (macro_list[end_macro_list]).def, end_macro_list);
-      }
+        fflush(stdout);
+     }
 
-      if((charstr[macro_name]).data.start == charrstart_fixed)
+      if(stepdebug)
+      {
+        printf("New macro defined:\n");
+        printf(" name=%s, len=%i\n", (macro_list[end_macro_list]).name, (macro_list[end_macro_list]).name_len);
+        printf(" definition=%.*s, len=%i\n", (macro_list[end_macro_list]).def_len, (macro_list[end_macro_list]).def, (macro_list[end_macro_list]).def_len);
+        printf(" internal function=%.*s\n", 8, internal[(macro_list[end_macro_list]).builtin].name.n8);         
+        printf(" vlm recovery length=%i\n", (macro_list[end_macro_list]).vlm_recov_len);
+        printf(" recursive macro=%i, arguments=%i\n", (macro_list[end_macro_list]).recursive, (macro_list[end_macro_list]).arg_type);
+        printf(" size pre=%i, post=%i\n", (macro_list[end_macro_list]).pre_size, (macro_list[end_macro_list]).post_size);
+        fflush(stdout);
+     }
+
+      if(((charstr[macro_name]).data.start == charrstart_fixed) && (is_vlm == 0))
       {
         /* fixed length macro */
         
@@ -1452,7 +1808,7 @@ void defpush_macro(int defpush, int defcall)
           vecset->patlist = init_patternvectors("", 0);  /* should not be found by pattern search */
         }
         
-        add_to_patternvector(vecset->patlist, macro_name, end_macro_list, 0, pattern_no_append);
+        add_to_patternvector(vecset->patlist, macro_name, end_macro_list, 0, vlm_type);
 
       }
       
@@ -1462,7 +1818,7 @@ void defpush_macro(int defpush, int defcall)
   }
   else
   {
-          print_warning(Exit_user, "length: %i of macro name: %.*s is incorrect. This macro is thus not defined.\n", macro_name_len, name_len, name);
+    print_warning(Exit_user, "length: %i of macro name: %.*s is incorrect. This macro is thus not defined.\n", macro_name_len, name_len, name);
   }
 
   /* remove macro name from memory */
@@ -2776,6 +3132,24 @@ void at_last(data_buffer **out)
 }
 
 
+void at_first(data_buffer **out)
+{
+  arg_text_return ret;
+  int i,
+      num_args;
+
+  num_args = current_status_pattern->num_of_args;
+
+  for(i = 0; i < num_args; i++)
+  {
+    /*  argument is the text to be stored */
+    ret = argument_text(0, i + 1);
+
+    write_in_at_first(ret.str_p, ret.length);
+  }
+
+}
+
 void print_error(data_buffer **out)
 {
   arg_text_return ret;
@@ -2882,40 +3256,53 @@ void get_var(data_buffer **out)
         case -1:
           /* diversion number */
           value = sdsfromlonglong((long long int) (*out)->divnum);
+          set_argument(0, 2, out, (*out)->position, sdslen(value));
           putchars_buffer(value, sdslen(value), out);
           sdsfree(value);
           break;
         case -2:
           /* os */
+          set_argument(0, 2, out, (*out)->position, 4);
           putchars_buffer("unix", 4, out);
           break;
         case -3:
           /* line number */
           value = sdsfromlonglong((long long int) line_counter);
+          set_argument(0, 2, out, (*out)->position, sdslen(value));
           putchars_buffer(value, sdslen(value), out);
           sdsfree(value);
           break;
         case -4:
           /* local line number */
           value = sdsfromlonglong((long long int) local_line_counter);
+          set_argument(0, 2, out, (*out)->position, sdslen(value));
           putchars_buffer(value, sdslen(value), out);
           sdsfree(value);
           break;
         case -5:
           /* current file name */
+          set_argument(0, 2, out, (*out)->position, strlen(current_input_file_buffer->filename));
           putchars_buffer(current_input_file_buffer->filename, strlen(current_input_file_buffer->filename), out);
           break;
         case -6:
           /* program name */
+          set_argument(0, 2, out, (*out)->position, strlen(program_name));
           putchars_buffer(program_name, strlen(program_name), out);
           break;
         case -7:
           /* program options after -- */
-          putchars_buffer(arg_options, strlen(arg_options), out);
+          set_argument(0, 2, out, (*out)->position, sdslen(arg_options));
+          putchars_buffer(arg_options, sdslen(arg_options), out);
+          break;
+        case -8:
+          /* program options after -- just before the input file */
+          set_argument(0, 2, out, (*out)->position, sdslen(arg_options_local));
+          putchars_buffer(arg_options_local, sdslen(arg_options_local), out);
           break;
         case -9:
           /* the return value of an executed shell command */
           value = sdsfromlonglong((long long int) sysreturn);
+          set_argument(0, 2, out, (*out)->position, sdslen(value));
           putchars_buffer(value, sdslen(value), out);
           sdsfree(value);
           break;

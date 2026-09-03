@@ -25,7 +25,9 @@
 
 void *xmalloc (size_t size)
 {
-  void *value = malloc (size);
+  void *value;
+  
+  value = malloc (size);
 
   if (value == NULL)
   {
@@ -38,10 +40,9 @@ void *xmalloc (size_t size)
 
 void *xrealloc (void *ptr, size_t size)
 {
-    // fprintf(stderr, "REalloc ptr: %p  size: %i\n", ptr, size);
-
-
-  void *value = realloc (ptr, size);
+  void *value;
+  
+  value = realloc (ptr, size);
 
   if (value == NULL)
   {

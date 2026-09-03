@@ -23,3 +23,18 @@
 	* emu: Complete emulation examples of m6 and gpm added.
 	* emu: M4 emulation example extended for compatibility. 
 	* doc: Updated manual and algorithm document.
+
+3-9-2026   Marco de Beurs
+
+	version 0.4
+	
+	* m0: New command line option: ordered-options.
+	* m0: New function at_first added to prefix text to a file.
+	* m0: Counter variables and instructions added.
+	* m0: New instructions added.
+	* m0: Variable length macro options added.
+	* m0: Macros and patterns can have multiple parts for regular expression like functionality.
+	* m0: Bug fixes in macro processing.
+	* emu: M4 emulation example extended with command line options.
+	* doc: Updated manual and algorithm document.
+	* examples: Examples added. 

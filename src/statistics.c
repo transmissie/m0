@@ -37,6 +37,73 @@ int max_position = size_reduce_history_chars;
 int stat_vml = 0,
     stat_vml_max_len = 0;
 
+    
+void print_macros_lists(wordlist *words)
+{
+  int i,
+      macro_index;
+      
+  do
+    {
+      for(i = 0; i < words->num_words; i++)
+      {
+        if(words->word_length[i] != 0)
+        {
+          macro_index = words->macro[i];
+          printf(" name:%s,def:", macro_list[macro_index].name);
+          if(macro_list[macro_index].def_len != 0)
+          {
+            printf("%s\n", macro_list[macro_index].def);
+          }
+          else
+          {
+            printf("--EMPTY--\n");
+          }
+        }
+      } 
+
+      words = words->next;
+      
+    } while(words != NULL);
+}
+
+void print_macros_pat(pattern_data *pat)
+{
+  int i,
+      j,
+      macro_index;
+  pattern_masks *masks;
+
+  if(pat != NULL)
+  {
+    for(i = 0; i < pat->vec_size; i++)
+    {
+      masks = pat->masks;
+      for(j = 0; j < masks->masks_end; j++)
+      {
+        macro_index = masks->masks_run[j];
+        if(macro_index >= 0)
+        {
+          printf(" name:%s,def:", macro_list[macro_index].name);
+          if(macro_list[macro_index].def_len != 0)
+          {
+            printf("%s\n", macro_list[macro_index].def);
+          }
+          else
+          {
+            printf("--EMPTY--\n");
+          }
+        }
+        else
+        {
+          printf(" part name:%s\n", macropart_list[-macro_index].name);
+        }
+        
+      }
+    }
+  }
+}
+
 void print_statistics(void)
 {
   int i,
@@ -68,10 +135,16 @@ void print_statistics(void)
   
   while(bitaps != NULL)
   {
-    printf(" Active macro set: %s\n", bitaps->name);
+    printf("\n Active macro set: %s\n", bitaps->name);
+    printf(" Defined macros:\n");
+    
+    print_macros_lists(bitaps->word15);
+    print_macros_lists(bitaps->word64);
+    print_macros_pat(bitaps->patlist);
+    
     bitaps = bitaps->next;
   }
-
+  
   printf("\n");
   
   arglists = arglast;
@@ -80,11 +153,11 @@ void print_statistics(void)
   {
     if(sdslen(arglists->name) != 0)
     {  
-      printf(" Active pattern: %s\n", arglists->name);
+      printf(" Active pattern: %s, used positions: %i\n", arglists->name, arglists->end);
     }
     else
     {
-      printf(" Vlm pattern is active\n");
+      printf(" Vlm pattern is active, used positions: %i\n", arglists->end);
     }      
 
     arglists = arglists->prev;
