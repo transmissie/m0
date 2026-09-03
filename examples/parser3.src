@@ -1,0 +1,69 @@
+COMMENT
+
+Copyright 2026 Marco de Beurs
+ 
+This file is part of m0.
+
+m0 is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License,
+or (at your option) any later version.
+
+m0 is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with m0. If not, see <https://www.gnu.org/licenses/>.
+
+END
+TEXT
+
+Special chars.
+
+END
+CODE
+0_specialchar: ;[@00-@2f@3a-@40@5b-@5e@60@7b-@ff]
+0_specialchar:e;`[-+*/ ;]'
+END
+TEXT
+
+
+assignments
+and operators after assignments
+
+END
+CODE
+0_specialchar:D;[@00-@1f@21-@2f@3a-@3c@3e-@ff]
+0_specialchar:=;[@00-@1f@21-@3c@3e-@ff]
+0_program:op2;`swap "01_Operator(" cat-1 "," cat swap-12 cat-1 "," cat cat-1 ")" cat'
+0_pattern:assign;[@00-@ff]~;stack_b begin-1 
+0_pattern:assign;=;stack_b end-0 
+0_pattern:assign;01_; stack_a begin+0
+0_append_pattern:assign;[a-zA-Z_0-9:()]+[:)]\e;stack_a end-1 stack_d 0
+0_pattern:assign;+ ;stack_a 19 opexif>= @op2 "+" stack_d 1
+0_pattern:assign;- ;stack_a 19 opexif>= @op2 "-" stack_d 1
+0_pattern:assign;* ;stack_a 20 opexif>= @op2 "*" stack_d 1
+0_pattern:assign;/ ;stack_a 20 opexif>= @op2 "/" stack_d 1
+0_pattern:assign;@3b;stack_a opexall stop
+0_part_macro:01_[a-zA-Z_0-9:()]+[:)];Ls;src
+0_tag_macro:a;src
+0_def_mcall:=;1_assign:;0;nr01;assign;;src;Fl
+0_tag_macro:b;src
+0_def_mcall:[-+*/%&^|]=;1_assign:;0;nr02;assign;;src;Fl
+0_tag_macro:c;src
+0_def_mcall:>>=;1_assign:;0;nr03;assign;;src;Ll
+0_tag_macro:d;src
+0_def_mcall:<<=;1_assign:;0;nr03;assign;;src;Ll
+0_link_parts:a;a;b;c;d
+0_define:1_assign:;`01_assign($b0,$0,$1)';;rn01;0;;;0
+END
+TEXT
+
+Switch to macroset to work through source
+
+END
+CODE
+0_mset:src
+END

@@ -207,6 +207,15 @@ push: 0
 @end defvr
 
 
+@defvr instruction swap-12
+Swaps the top - 1  entry and the top - 2 entry of the active stack.
+
+pop: 0
+
+push: 0
+@end defvr
+
+
 @defvr instruction set_base
 Sets the base of stack a to the value on the top of the stack.
 The base is used as the bottom when multiple arguments are output in the default argument
@@ -354,6 +363,20 @@ This stops the pattern. Normally used when all arguments are collected e.g. afte
 It is necessary to use the @code{stop} instruction when collecting arguments, otherwise the complete input will be
 used for the arguments of the macro. This instruction is not needed for the single programs for macros or when using patterns
 to fill in the definition.
+
+pop: 0
+
+push: 0
+
+@end defvr
+
+@defvr instruction goback?
+This instruction has only an effect if used before a @code{stop}. It sets the input back with the value of @code{?},
+which can be 1 or 2.
+Can be used when the position to stop collecting arguments can only be detected later than the real position to stop.
+The instruction will increment. Thus using it two times will back up the position with both values.
+
+The value is reset between programs.
 
 pop: 0
 
@@ -714,16 +737,29 @@ push: 1
 @end defvr
 
 
+
+
 @node String instructions
 @section String instructions
 
 @defvr instruction cat
-Concatenates the two strings from the top of the stack, leaving a single string on the stack.
+Concatenates the string on top to the string on top - 1 of the stack, leaving a single string on the stack.
 
 pop: 2
 
 push: 1
 @end defvr
+
+
+@defvr instruction cat-1
+Concatenates the string on top -1 to the string on top of the stack, leaving a single string on the stack.
+This instruction concatenates the strings reverse compared to @code{cat}.
+
+pop: 2
+
+push: 1
+@end defvr
+
 
 @defvr instruction strcmp
 Compares the two strings from the top of the stack. If the strings are equal a @code{true} is returned to
@@ -806,7 +842,7 @@ push: 1
 @end defvr
 
 @defvr instruction str*
-Pops the two top positions, multiplies the string at top - 1 by a number at the top position and returns the string.
+Pops the two top positions, multiplies the string at top by a number at the top -1  position and returns the string.
 
 pop: 2
 
@@ -827,8 +863,25 @@ these instructions are normally not useful during argument collection.
 The current position in the output, where these instructions are executed, is
 the end of the pattern part.
 
+The @code{end} instructions should not be used in argument substitution.
+Instead the @code{get} instructions should be used. These instructions do not end 
+a @code{begin} instruction. To end a @code{begin} use the @code{endbegin}. 
+
 @defvr instruction get_st
-Get pattern part from the start position of the pattern part and stores the string on the stack.
+Get pattern part from the start position set by @code{begin} of the pattern part and stores the string on the stack.
+
+pop: 0
+
+push: 1
+@end defvr
+
+@defvr instruction get_st-?
+Get pattern part from the start position set by @code{begin} of the pattern part up to the end - offset @code{?} and stores the string on the stack.
+
+The offset (@code{?}) can be 1 to 3.
+
+Similar to the @code{end-?}, but does not enable a new @code{begin}.
+
 
 pop: 0
 
@@ -836,7 +889,7 @@ push: 1
 @end defvr
 
 @defvr instruction get_st+?
-Get pattern part from the start position of the pattern part + offset (@code{?})
+Get pattern part from the start position set by @code{begin} of the pattern part + offset (@code{?})
 and stores the string on the stack.
 
 The offset (@code{?}) can be 1 to 3.
@@ -860,13 +913,15 @@ push: 1
 @defvr instruction putoutst
 Replace output from start position set by @code{begin} up to the current position by string on the stack.
 
+This instruction will end a @code{begin} to allow a new begin.
+
 pop: 1
 
 push: 0
 @end defvr
 
 @defvr instruction putout
-Replace pattern part by string on the stack.
+Replace pattern part by string on the stack. Can be used if the length of the pattern part is a fixed length. 
 
 pop: 1
 
@@ -883,6 +938,14 @@ pop: 1
 push: 0
 @end defvr
 
+@defvr instruction endbegin
+
+Ends a begin and thereby allows a new begin.
+
+pop: 0
+
+push: 0
+@end defvr
 
 
 @node Instructions for overruling macro settings
@@ -1138,6 +1201,68 @@ Returns the macro type: @code{macro} or @code{mcall}. The top of the stack shoul
 pop: 1
 
 push: 1
+@end defvr
+
+
+@node Counter variables
+@section Counter variables
+
+Just as general variables to hold strings exist, there are variables to hold numbers.
+These variables are called counters and are globally available to programs. This means that they
+hold their value between macros and programs.
+
+The number of counters is maximised to 255 and the first counter starts with number 1.
+
+These counters can be used to transfer information between programs in different macros.
+
+@defvr instruction cnt_get
+
+This instruction will put the value of a counter on the active stack. The top of the stack is
+the number of the counter.
+
+pop: 1
+
+push: 1
+@end defvr
+
+@defvr instruction cnt_set
+
+This instruction will set the value of a counter to the value on the top of the active stack. The top-1 of the stack is
+the number of the counter.
+
+pop: 2
+
+push: 0
+@end defvr
+
+@defvr instruction cnt_clr
+
+This instruction will set the value of a counter to 0. The top of the stack is
+the number of the counter.
+
+pop: 1
+
+push: 0
+@end defvr
+
+@defvr instruction cnt++
+
+This instruction will increment the value of a counter. The top of the stack is
+the number of the counter.
+
+pop: 1
+
+push: 0
+@end defvr
+
+@defvr instruction cnt--
+
+This instruction will decrement the value of a counter. The top of the stack is
+the number of the counter.
+
+pop: 1
+
+push: 0
 @end defvr
 
 

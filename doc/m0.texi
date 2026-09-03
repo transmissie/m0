@@ -158,7 +158,7 @@ For a mechanical engineer these names look like metric screw thread. Besides thi
 
 Intuitively a very flexible general macro processor should be a lot slower in execution than a normal general macro processor. Flexibility normally means more and slower code.
 
-The algorithm used in @code{m0} for detecting macros is a bitap algorithm. This algorithm is fast and flexible at the same time. A preliminary rough estimate (on a relatively modern 64 bit computer) is that @code{m0} with @code{m4} emulation is twice as fast as @code{m4} processing a big file without macros. When processing a big file with macros, @code{m0} has a similar or a little bit better performance as @code{m4}.
+The algorithm used in @code{m0} for detecting macros is a bitap algorithm. This algorithm is fast and flexible at the same time. A preliminary rough estimate (on a relatively modern 64 bit computer) is that @code{m0} with @code{m4} emulation is twice as fast as @code{m4} processing a big file without macros. When processing a big file with macros, @code{m0} has a similar or a little bit better performance than @code{m4}.
 
 
 @node Invoking m0
@@ -172,7 +172,7 @@ The format for calling @code{m0} is following the "default" GNU and posix rules:
 @code{m0} @r{[}@var{option}@dots{}@r{]} @r{[}@var{file}@dots{}@r{]}
 @end example
 
-The ordering of options is not relevant. The files are processed in order of placement on the command line.
+The ordering of options is not relevant unless the @code{-O} / @code{--ordered-options} is set. The files are processed in order of placement on the command line.
 
 @section Command line options
 
@@ -213,6 +213,20 @@ If specified:
 @itemx --output=@var{file}
 Specifies the file to use for output. The default output, when no output file is specified, is standard output.
 
+@item -O 
+@itemx --ordered-options
+After setting this option, the options on the command line are valid for succeeding files.
+This is valid for the options: @code{-D}, @code{-E},  @code{-o},  @code{-T} and  @code{-t}.
+
+The options set for the succeeding file are based on the defaults and options set before the @code{-O} option
+and the options set directly before the file.
+
+The @code{-o} and @code{-t} options to specify an output or a trace file are persistent. This means that these files are only
+changed when specified and are not automatically reset to the default. Specifying these files opens a new file. They will not 
+append to an existing or previously specified file.
+
+The @code{-D} option, which defines a macro, is also persistent and therefore this definition also exists in later files.  
+
 @item -s
 @itemx --statistics
 Print statistics of the use of macros, macro sets, patterns and internal memories at the end of running the program.
@@ -246,7 +260,8 @@ If no file is specified the standard input is taken as input.
 A @code{-} specifies standard input as input. This @code{-} can appear multiple times and will also open the standard input multiple times.
 The control-D normally ends the input from standard input in a console.
 
-The position of options compared to the position of the files makes no difference.
+The position of options compared to the position of the files makes no difference,
+unless the @code{-O} / @code{--ordered-options} is set.
 Files placed after @code{--} are also used as input files and are not transferred to
 the argument string for use in the macro processor.
 
@@ -374,9 +389,11 @@ NnNname
 
 The @code{[Nn]*} means zero or more characters being a capital or small n.
 
-The variable length macro can be used for recognising patterns or regular expressions. In the current implementation the variable part
+The variable length macro can be used for recognising patterns or regular expressions. The variable part
 is limited to a single character or set of characters, although it is possible to have multiple variable parts. The possibilities are
-equal to the pattern parts explained later, except that a one time trigger is not supported. 
+equal to the pattern parts explained later in @ref{Patterns}, except that a one time trigger is not supported. In @ref{Macros and patterns consisting of multiple parts} further possibilities to use multiple parts are described. 
+
+The vlm has extra options compared to a normal macro. The length match can be set. It is e.g. possible to set the macro to use the shortest match or the longest match in a text.
 
 @node Macros with arguments
 @section Macros with arguments
@@ -682,7 +699,7 @@ Is used for argument substitution of arguments from the other stacks in the defi
 An @code{a} -- @code{f} after this character in the definition selects the stack. The number after this is the entry of the stack. 
 @end table
 
-These default characters can be changed using the builtin function @code{charagr}. This function is described in @ref{Functions for setting symbols}. 
+These default characters can be changed using the builtin function @code{chararg}. This function is described in @ref{Functions for setting symbols}. 
 
 @subsection Pattern argument substitution
 
@@ -743,7 +760,8 @@ When two macros trigger at the same position in the text, the macro which has th
 expanded and the other not. If also the length of the macro names is the same, then the
 first macro defined will be expanded and the other not.
 
-
+Normal macros have priority over variable length macros (vlm). If two vlm macros are triggered at the same time,
+the one first defined has priority. The second one will not be triggered nor expanded.
 
 
 @node Patterns
@@ -1000,6 +1018,176 @@ The issue of priority can also be overcome by a different pattern definition:
 
 However for more complex patterns the priority still plays a role.
 
+@node Macros and patterns consisting of multiple parts
+@chapter Macros and patterns consisting of multiple parts 
+
+@section Introduction
+
+In the previous chapters the flexibility of macro names and patterns with
+multiple values on a single character position and the use of one or more characters has been
+explained. This flexibility is normally sufficient for most tasks.
+
+In this part further possibilities are explained.
+These further possibilities described in this part give the names the same functionality as
+regular expressions known from some programming languages or software.
+
+In this text the multiple parts that are linked together are called pattern expressions, because 
+the name regular expression is mostly used for a notation to describe sets of character strings.
+
+@section Technical background
+
+Regular expressions are normally implemented with algorithms specially made for these.
+In @code{m0} the bitap algorithm is still used for macros and patterns consisting of multiple parts.
+The use of this has an influence on the way to construct a name from the multiple parts.
+
+The multiple parts are constructed in the same way as the normal macros or pattern parts,
+but they are not started by the first character of the part.
+The parts are started when another part has been detected. By linking the parts together,
+the second part is activated when the first part has triggered.
+
+Thus to define multiple parts you have to:
+@itemize
+@item Define macro or pattern parts.
+@item Link these parts.
+@end itemize
+
+
+@section Defining a part
+
+The name of a part has all the possibilities mentioned under the variable length macros.
+
+The difference is that a starting or intermediate part will not do a macro expansion.
+Normally only the last part is defined as a macro and will do the expansion.
+It will normally replace the whole piece of text of the different parts with the definition.
+However this can be defined differently.
+
+If a part will start at the first character (starting part) or not (intermediate part), can be
+set during the definition of the part.
+
+In conclusion three types of parts exist:
+@enumerate
+@item A starting part; the first part of the expression.
+@item An intermediate part; optional parts between the start and end parts in the expression.
+@item An end part; the part that executes the macro expansion.
+@end enumerate
+
+There is no limit to the number of starting, intermediate or end parts.
+However the performance will be influenced if the total number of characters used by the parts become large.
+The parts are placed in the algorithm for vlm macros and every time a 64 character border is exceeded,
+an extra word / register is needed that will slow down the execution speed of the vlm algorithm. 
+
+@section Linking parts
+
+The linking of parts make the parts work as a pattern expression.
+
+Linking defines which part will start or activate another or other parts.
+
+The following example is a figure of the linking of a small pattern expression.
+This example has:
+@itemize
+@item 1 starting part: @code{aa}
+@item 2 intermediate parts: @code{bb} and @code{cc}, these are alternatives of each other. 
+@item 1 end part: @code{dd} that will do the macro expansion.
+@end itemize
+A regular expression for this would be e.g.: @code{aa(bb|cc)dd}.
+
+In the figure the arrows (@code{-->}) indicate the links:
+
+@example
+@group
+@verbatim
+
+ start part:     |a|a|
+                    |
+ link aa to         +---+
+ bb and cc          |   |
+                    |   v
+ intermediate part  |  |b|b| 
+                    v     |
+ intermediate part |c|c|  |
+                      |   |
+ link bb to dd        +---+
+ link cc to dd            |
+                          v
+ end part                |d|d|
+                            |
+                            v
+                      macro expansion
+                      
+@end verbatim
+@end group
+@end example
+
+The @code{aa} start part will start on the first character. If the @code{aa} is in the text, this part
+will trigger the start of intermediate parts @code{bb} and @code{cc} using the links aa to bb and cc.
+If the text contains an @code{aabb} or @code{aacc}
+the intermediate part @code{bb} or @code{cc} will trigger the start of end part @code{dd} using the link bb to dd or cc to dd.
+If the text further contains a @code{dd} the end part will trigger a macro expansion.
+
+This example thus shows that using parts and links to create pattern expressions a same functionality 
+as using regular expressions can be achieved.
+
+The example shows only a very basic linking. The linking can be more elaborate to
+have e.g. zero or one time a part, or one or more times a part, or more complicated OR and AND combinations. 
+
+As an example a part of a pattern expression with a one or more part:
+@example
+@group
+@verbatim
+
+ link from other part         >----+
+                                   |
+ link from bbb to start of bbb     +-------+
+                                   v       |
+ intermediate part                |b|b|b|  |
+                                       |   |
+ link from bbb also to other part      +---+-->
+                      
+@end verbatim
+@end group
+@end example
+
+It will have been triggered at least once before it triggers another part.
+When it triggers it also starts itself.
+
+
+@section Macro with multiple parts expansion  
+
+The text that matches the pattern expression should be replaced by the definition of the macro.
+The algorithm in @code{m0} uses backtracking when a pattern expression for a macro is matched. 
+The way the backtracking runs
+can be set during the definition of the parts.
+
+There can sometimes seem to be ambiguities what the pattern expression exactly should match.
+Therefore the following points should bring clarity in the matching of the pattern expression:
+
+@itemize
+@item The macro expansion is triggered on the first position that matches the pattern expression. 
+It is therefore not useful to end the name of the end part with e.g. a one or more character (@code{[]+}).
+The first moment a character matches this, the macro expansion is triggered and further possible matching
+characters are not included in the match. A way to overcome this is defining a different character
+(like e.g. a white-space) after the one or more character. This different character can be excluded from
+the macro expansion using the post-size of the macro. 
+@item The length matching of a vlm part can be set in the options when defining the part. See @ref{Functions for defining macros} 
+and @ref{Functions for defining vlm parts}.
+@item The options of a part also determine if the length of a previous part should be included.
+Normally it is the case with pattern expressions that the length of the previous part should be included.
+The start part will obviously never include the length of a previous part.
+@item If multiple parts trigger a next part at the same position, then the part first defined will be
+used in the backtracking. The order of definition of parts has thus an influence in this case. Since the linking
+of parts is not dependent on the order of defining parts, there is complete freedom in deciding the order.
+@end itemize 
+
+
+@section Patterns with multiple parts
+
+Using the multiple parts in patterns (for argument collection or substitution) does not increase
+the functionality of patterns. Every part will start the related program irrespective of the
+type of part.
+
+The use of multiple parts in patterns can however reduce repeated matching parts. 
+With a large number of parts it will therefore reduce memory use and increase execution speed.
+The effort for coding the pattern will probably decrease.
 
 
 @node Builtin functions
@@ -1059,7 +1247,7 @@ Macros or code for all versions is indicated with @code{all}.
 
 @subsection Main design
 
-The emulation of @code{m4} is using three macro sets:
+The emulation of @code{m4} is using four macro sets:
 @enumerate
 @item The default macro set @code{0} is used to define all basic macros that are necessary to
 be able to define the @code{m4} macros. It is also used to hold some @code{m4} macros that are
@@ -1068,6 +1256,7 @@ to start emulation of the @code{m4} input.
 @item The @code{m4} macros are defined and executed in the macro set @code{m4exec}.
 @item The @code{m4builtin} macro set is used as a collection of builtin @code{m4} macros that
 can be called from the @code{builtin} macro.
+@item The @code{Args} macro set is used for the @code{m4} command line options.
 @end enumerate
 
 A big number of the builtin @code{m4} macros are directly linked to the functions in @code{m0}.

@@ -2,7 +2,7 @@
 @comment ========================================================
 @comment %**start of header
 @setfilename m0algo.info
-@set UPDATED 2 March 2026
+@set UPDATED 18 July 2026
 @settitle Bitap algorithms used in M0
 @documentencoding UTF-8
 @set txicodequoteundirected
@@ -678,20 +678,18 @@ The default shift will in this case start the depending part, because
 the start bit is not set by the init bitmask. The two pattern parts are 
 thus working like one word.
 
-The method of starting can also be extended. The next part discusses this.
+This method of starting a pattern part can be extended. The next part discusses this.
 
 
-@section Regular expression possibilities
+@section Regular expression possibilities using multiple parts
 
 By using a mask with start bits, which is activated by a triggered pattern part, it
-would be possible to make many different links between pattern parts. Thus when
-a certain pattern part is triggered, it could start one or multiple other pattern parts
-or even itself.
+is possible to make many different links between pattern parts. Thus when
+a certain pattern part is triggered, it starts one or multiple other pattern parts
+or even itself by setting the correct staring bits.
 
-This functionality would allow to make regular expressions possible using the
+This functionality allows to make the functionality of regular expressions possible using the
 bitap as described till so far.
-
-At this moment it is however not (yet) implemented in @code{m0}.
 
 
 @section Variable length macros

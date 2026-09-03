@@ -1,0 +1,63 @@
+0_define:1_divert:;;divert;nr01 ;0
+1_divert:-1
+This is a set macros to extract code or text.
+
+The macro to use in a text is:
+TEXT
+bla bla
+END
+CODE
+something
+END
+
+0_define:1_pattern:;;pattern;nr01 ;0
+0_define:1_ifmacro:;;ifmacro?;rr01 ;0
+0_define:1_undefine:;;undefine;nr01 ;0
+0_define:1_set_var:;;set_var;nn01 ;0
+0_define:1_get_var:;;get_var;nr01 ;0
+0_define:1_chars_pattern:;;charpat;nr01 ;0
+0_define:1_chars_args:;;chararg;nr01 ;0
+0_define:1_specialchar:;;specialc;nr01 ;0
+
+1_specialchar:,;@3b
+
+1_chars_pattern:[]-\@+*?~
+1_chars_args:1$*@#$;101;102;103
+
+1_set_var:101;`
+1_set_var:102;'
+1_set_var:103;,
+1_set_var:100;$1
+1_pattern:string;[@00-@ff]~;stack_b 1 stack_a begin-1 
+1_pattern:string;`;stack_b 1 +
+1_pattern:string;';stack_b 1 - dup =0 if stack_a end stop endif
+0_define:`;1_get_var:100
+;;nn00 ;string
+
+1_pattern:args;\,; stack_a end 
+1_pattern:args;[:\,][@00- ]*[!-@ff];stack_a begin-1 ;1
+1_pattern:args;`
+';stack_a end stop
+
+1_pattern:text;[@00-@ff]~;stack_a begin-1 ;1
+1_pattern:text;`END
+';stack_a end stop
+
+defining the text part
+
+0_define:`TEXT
+';;;nn00;text
+
+defining the code part
+
+0_define:`CODE
+';`$1';;nn00;text
+
+defining comments
+
+0_define:`COMMENT
+';;;nn00;text
+
+
+1_undefine:`0_define:'
+1_divert:0

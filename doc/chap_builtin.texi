@@ -15,7 +15,7 @@ In the description below the arguments with square hooks ([...]) indicate option
 This is probably the most complex macro to start with, but since it is the first macro to be used it is best to understand first.
 
 
-@deffn builtin define name [definition] {[builtin function]} {macro-settings} {[argument-pattern]} {[substitute-pattern]} {[program-instructions]} {[macro-set]}
+@deffn builtin define name [definition] {[builtin function]} {macro-settings} {[argument-pattern]} {[substitute-pattern]} {[program-instructions]} {[macro-set]} {[vlm-options]}
 
 This function defines a new macro. The @code{0_define} macro can be used for this at startup. For an overview how the options for the different parts function @pxref{The complete working of macros}.
 
@@ -118,7 +118,82 @@ The optional @ovar{macro-set} is the name of a set of macros that will be used t
 If the macro set does not yet exist, it will be initialised.
 
 
-The only macro @code{0_define} available at the start using the pattern @code{0} for argument collection is defined as:
+The optional @ovar{vlm-options} is a string of a specific length with characters at a specific position having a specific meaning.
+This option is only useful for variable length macros (vlm).
+The positions in the string have the meanings: 
+@table @code
+@item 1
+Sets the way in which the length of a vlm is determined. Possibilities are:
+@table @code
+@item L
+The longest match of the vlm is used.
+@item S
+The shortest match of the vlm is used.
+@item E
+The shortest match of the vlm with an extension is used. This is similar to the @code{S} option,
+but will include a variable length part on the first position. This is the default if no @ovar{vlm-options} is set.
+@item F
+The fixed length of the @var{name} is used. Normally only used with macros that have a fixed length.
+@end table
+
+An example result with shortest match:
+@example
+0_define:ab[ab]*c;d;;nn00;;;;;S
+
+abaac
+ababc
+@end example
+
+will result in:
+
+@example
+
+d
+abd
+@end example
+
+An example result with longest match:
+@example
+0_define:ab[ab]*c;d;;nn00;;;;;L
+
+abaac
+ababc
+@end example
+
+will result in:
+
+@example
+
+d
+d
+@end example
+
+@item 2
+Option to set if this macro should be triggered using a link by another macro part.
+@table @code
+@item n
+This is a normal macro. This is the default if no @ovar{vlm-options} is set.
+@item e
+This is an end macro part that is only triggered by a link.
+@item l
+This is an end macro part that is only triggered by a link. The length of the previous macro part is included in the length of the macro. 
+@end table
+
+@end table
+
+A warning:
+@quotation
+Not all combinations make sense when using multi part macros. If the length of a previous part of a macro is included (option @code{l}),
+the short options (@code{S} and @code{E}) for determining the length of a macro are normally not useful.   
+@end quotation
+
+Setting the @ovar{vlm-options} will define the macro as a vlm even if the @var{name} is not a vlm. If the macro was previously 
+not a vlm, then setting the @ovar{vlm-options} will not change the macro to a vlm. 
+
+Only one macro is available at the start of @code{m0}.
+This is the macro @code{0_define} and uses the pattern @code{0} for argument collection.
+It is defined as:
+
 @example
 0_define:0_define:;;define;nr01;0
 
@@ -140,7 +215,7 @@ Output: none.
 
 
 
-@deffn builtin push name [definition] {[builtin function]} {macro-settings} {[argument-pattern]} {[substitute-pattern]} {[program-instructions]} {[macro-set]}
+@deffn builtin push name [definition] {[builtin function]} {macro-settings} {[argument-pattern]} {[substitute-pattern]} {[program-instructions]} {[macro-set]} {[vlm-options]}
 
 Similar to @code{define}, but saves the previous definition. The previous definition can be retrieved with @code{pop}.
 It redefines the user macro @var{name} using the same arguments as used in @code{define}.
@@ -210,11 +285,99 @@ Output: none.
 @end deffn
 
 
+@node Functions for defining vlm parts
+@section Functions for defining vlm parts
+
+The functions described in this part are used specifically for variable length macros (vlm).
+They extend the macros with the same possibilities the patterns have.
+
+
+@deffn builtin part_m part-name [vlm-options] [macro-set]
+
+This function defines a macro part with @var{part-name}.
+The @var{part-name} has the same possibilities as the @var{name} in macros.
+
+
+The optional @ovar{vlm-options} is a string of a specific length with characters at a specific position having a specific meaning.
+It is similar to the @ovar{vlm-options} in the @code{define} function.
+The positions in the string have the meanings: 
+@table @code
+@item 1
+Sets the way in which the length of this (vlm) part is determined. Possibilities are:
+@table @code
+@item L
+The longest match of the vlm is used. This is the default if no @ovar{vlm-options} is set.
+@item S
+The shortest match of the vlm is used.
+@item E
+The shortest match of the vlm with an extension is used. This is similar to the @code{S} option,
+but will include a variable length part on the first position.
+@item F
+The fixed length of the @var{part-name} is used.
+@end table
+
+@item 2
+Option to set if this macro part should be triggered using a link by another macro part.
+@table @code
+@item s
+This macro part starts at the first character like normal macros.
+@item i
+This is an intermediate macro part that is only triggered by a link.
+@item l
+This is an intermediate macro part that is only triggered by a link.
+The length of the previous macro part is included in the length of the macro.
+This is the default if no @ovar{vlm-options} is set.
+@end table
+
+@end table
+
+The optional @ovar{macro-set} is the name of a set of macros that will be used to define the macro part in.
+If this option is not set, the macro part is defined in the current active set of macros.
+If the macro set does not yet exist, it will be initialised.
+
+
+Output: none.
+@end deffn
+
+
+@deffn builtin tag_m tag-name [macro-set] 
+
+This function tags the current position of the vlm parts. A vlm part can be a part defined by the @code{part_m} function or a vlm macro. 
+It is similar to the @code{tag_p} function in @ref{Functions for defining patterns}.
+
+The position can be referenced by @var{tag-name}.
+The @var{tag-name} has a maximum of 8 characters.
+The @var{tag-name} used in both this function and the @code{tag_p} function should be unique, because the list
+with tags is used by both functions. 
+
+To link from a vlm part, the tag should be placed directly after the vlm part.
+To link to a vlm part, the tag should be placed directly in front of the vlm part.
+
+The tags are used in the @code{link_prt} function.
+
+The optional @ovar{macro-set} is the name of a set of macros that will be used for the tag. If this option is not set, the tag is placed in the current active set of macros.
+If the macro set does not yet exist, it will be initialised.
+
+Output: none.
+@end deffn
+
+
+@deffn builtin link_prt from_tag to-tag [to-tag] 
+This function links a macro part or a pattern part (see @ref{Functions for defining patterns}) to other parts.
+It links the part tagged with @var{from-tag} to the part tagged with @var{to-tag}.
+The part linked to will then start when the from part has triggered.
+
+Multiple parts can be linked to in one function call.
+
+Output: none.
+@end deffn
+
+
 @node Macro sets
 @section Macro sets
 
 Macros are defined in a set of macros. This allows to have macros active at different times when processing 
-an input and not having to spilt an input and processing the parts separately. 
+an input and not having to split an input and processing the parts separately. 
 
 Only one set of macros can be active at one time. It is thus not so flexible as to be able to activate and deactivate certain macros.
 
@@ -228,10 +391,10 @@ Only macros available in the new macro set can be used after switching. The func
 Output: none.
 @end deffn
 
-@deffn builtin defmcall name [called-macro] {[called macro-set]} {mcall-settings} {argument-pattern} {[program-instructions]} {[macro-set]} 
+@deffn builtin defmcall name [called-macro] {[called macro-set]} {mcall-settings} {argument-pattern} {[program-instructions]} {[macro-set]} {[vlm-options]}
 
 Defines a macro that will call a macro (@code{mcall}) in a macro set. The @code{mcall} enables the call to a macro (or an @code{mcall})
-in another macro set without first switching to this macro set.
+in another macro set without first switching to this macro set using the @code{macroset} function.
 
 The @code{mcall} is similar to a macro, except that it calls another macro instead of a built in function or a definition.
 It calls the macro with the name in @ovar{called-macro} or when this is empty the macro name in first argument on the stack when the @code{mcall} is invoked.
@@ -271,6 +434,8 @@ The @ovar{program-instructions} is a program that is executed just after the arg
 
 The optional @ovar{macro-set} is the name of a set of macros that will be used to define the macro call in. If this option is not set, the macro call is defined in the current active set of macros.
 If the macro set does not yet exist, it will be initialised.
+
+The optional @ovar{vlm-options} is the same as the @ovar{vlm-options} in @code{define}. 
 
 The @code{undefine} function can be used to delete the @code{mcall}.
 
@@ -367,7 +532,7 @@ out: | | | | |m|a|c|r|o| |o|u|t|p|u|t| | | | | | | | | | |
 @end deffn
 
 
-@deffn builtin pshmcall name [called-macro] {[called macro-set]} {mcall-settings} {argument-pattern} {[program-instructions]} {[macro-set]} 
+@deffn builtin pshmcall name [called-macro] {[called macro-set]} {mcall-settings} {argument-pattern} {[program-instructions]} {[macro-set]} {[vlm-options]} 
 Push macro call is similar to @code{defmcall}, but saves the previous definition. The previous definition can be retrieved with @code{pop}.
 It redefines the macro call @var{name} using the same arguments as used in @code{defmcall}.
 
@@ -419,6 +584,29 @@ This function appends @var{pattern-part} to the previous pattern part in the pat
 It has the same arguments as @code{pattern}.
 
 The pattern-part matching will only start when the previously defined pattern-part has triggered.
+
+Output: none.
+@end deffn
+
+@deffn builtin inter_p name pattern-part program-instructions [priority]
+This function defines an intermediate @var{pattern-part} in the pattern named @var{name}.
+It has the same arguments as @code{pattern}.
+
+The intermediate pattern-part matching will only start when another pattern-part has triggered
+using a link to this intermediate pattern-part.
+
+Output: none.
+@end deffn
+
+
+@deffn builtin tag_p name tag-name 
+This function tags the current position (before and / or after a pattern-part) in the pattern named @var{name} with @var{tag-name}.
+The @var{tag-name} has a maximum of 8 characters.
+
+To link from a pattern part, the tag should be placed directly after the pattern part.
+To link to a pattern part, the tag should be placed directly in front of the pattern part.
+
+The tags are used in the @code{link_prt} function.
 
 Output: none.
 @end deffn
@@ -571,6 +759,8 @@ If the @var{substring} is not found the number -1 is returned.
 
 Output: position of the @var{substring} in @var{string} or -1.
 
+The output is also put in argument 3.
+
 @end deffn
 
 @deffn builtin substr string from [length]
@@ -579,6 +769,9 @@ characters, or to the end of @var{string}, if @ovar{length} is omitted. The star
 is 0. 
 
 Output: the substring
+
+The output is also put in argument 4.
+
 @end deffn
 
 @deffn builtin strtrans string chars [replacement]
@@ -590,6 +783,9 @@ If a character in @var{chars} has no corresponding character in @ovar{replacemen
 Also a range of characters can be given, e.g.: @code{a-z} or @code{z-a}.
 
 Output: translated string
+
+The output is also put in argument 4.
+
 @end deffn
 
 @deffn builtin num2chr number [number] ... [number]
@@ -601,6 +797,9 @@ Multiple @ovar{number} can be used and result in a string with the ASCII charact
 of the numbers.
 
 Output: single character or string of characters
+
+The output is also put in argument 2.
+
 @end deffn
 
 @deffn builtin num2str number [radix] [width]
@@ -676,12 +875,15 @@ Gets the program name.
 @item -7
 Gets a string with all the options after the @code{--} on the command line.
 @item -8
-Reserved.
+Gets a string with all the options on the command line after the @code{--} and directly before the input file.
 @item -9
 Gets the return value from the last command executed by the function @code{shell}.
 @end table
 
+The output is also put in argument 2.
+
 Output: the selected string.
+
 
 @end deffn
 
@@ -805,6 +1007,20 @@ way as the @code{divert} function.
 
 Output: none.
 @end deffn
+
+
+@deffn builtin at_first string
+Puts the @var{string} in a buffer that will be prefixed to the input every time a new file from the command line is opened.
+Similar to the @code{at_last} function, but the buffer will not be emptied after a prefix.
+
+Can be used to e.g. set defaults or output a heading per file. 
+
+The function appends additional strings to the previous strings. It works thus like a FIFO buffer in the same
+way as the @code{divert} function.
+
+Output: none.
+@end deffn
+
 
 @deffn builtin shell command
 Executes the @var{command} in a shell.

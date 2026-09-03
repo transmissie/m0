@@ -1,0 +1,75 @@
+COMMENT
+
+Copyright 2026 Marco de Beurs
+ 
+This file is part of m0.
+
+m0 is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License,
+or (at your option) any later version.
+
+m0 is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with m0. If not, see <https://www.gnu.org/licenses/>.
+
+END
+TEXT
+
+Special char for the space before and after an identifier.
+
+space
+newline
+name chars
+separators
+
+END
+CODE
+0_specialchar:s;[ @07-@09@0b@0d]
+0_specialchar:n;@0a
+0_specialchar:a;[a-zA-Z_0-9]
+0_specialchar:(;[-(){}@5b@5d+=,<>*/&]
+0_specialchar:);[@00-@1f@21-@28@2a-@ff]
+0_specialchar:};[@00-@1f@21-@7c@7e-@ff]
+0_specialchar: ;[@00-@1f@21-@ff]
+END
+TEXT
+
+A macro to number lines
+
+END
+CODE
+0_define:0_n;0_char:10
+0_define:\n;`
+00_line($2)';get_var;nn00);;;-4;src
+END
+TEXT
+
+A macro to delete spaces
+
+single space
+space @code{@{@}()}
+@code{@{@}()} space
+
+put a space before a @code{@}),}
+END
+CODE
+0_define:\s ;;;nn01;;;;src
+0_define:\s\(;;;nn01;;;;src
+0_define:\(\s;;;nn10;;;;src
+0_define:};`};';;nn00;;;;src
+0_define:=;= ;;nn00;;;;src
+END
+TEXT
+
+Switch to macroset to work through source
+
+END
+CODE
+0_mset:src
+
+END

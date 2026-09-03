@@ -1,0 +1,205 @@
+COMMENT
+
+Copyright 2026 Marco de Beurs
+ 
+This file is part of m0.
+
+m0 is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License,
+or (at your option) any later version.
+
+m0 is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with m0. If not, see <https://www.gnu.org/licenses/>.
+
+END
+TEXT
+
+Special char for the space before and after an identifier.
+
+END
+CODE
+0_specialchar: ;[@00-@2f@3a-@40@5b-@5e@60@7b-@ff]
+0_specialchar:e;[@00-@27@29-@2f@3a-@40@5b-@5e@60@7b-@ff]
+0_define:0_esc;0_char:27
+;;nn00;;;;0
+END
+TEXT
+
+Macros and programs for types
+
+Using counters:
+
+@table @asis
+@item 10:
+int
+@item 11:
+char
+@item 12:
+float
+@item 13:
+double
+@item 14:
+void
+
+@item 15:
+short
+@item 16:
+long
+@item 17:
+unsigned
+@item 18:
+signed
+
+
+@end table
+
+END
+CODE
+0_program:clrtypes;` 10 cnt_clr 11 cnt_clr 12 cnt_clr 13
+cnt_clr 14 cnt_clr 15 cnt_clr 16 cnt_clr 17 cnt_clr 18 cnt_clr'
+0_program:gettypes;` 17 cnt_get "unsigned " str*  
+18 cnt_get "signed " str* cat
+16 cnt_get "long " str* cat
+15 cnt_get "short " str* cat
+10 cnt_get 11 cnt_get + 12 cnt_get + 13 cnt_get + 14 cnt_get +
+if
+10 cnt_get "int" str* cat 
+11 cnt_get "char"  str* cat
+12 cnt_get "float" str* cat
+13 cnt_get "double" str* cat
+14 cnt_get "void" str* cat
+else 
+"int" cat 
+endif'
+0_define:\ short\ ;`01_Extend_short($0) ';;nn11 ;;; 15 cnt++;src
+0_define:\ long\ ;`01_Extend_long($0) ';;nn11 ;;; 16 cnt++;src
+0_define:\ unsigned\ ;`01_Extend_unsigned($0) ';;nn11 ;;; 17 cnt++;src
+0_define:\ signed\ ;`01_Extend_signed($0) ';;nn11 ;;; 18 cnt++;src
+0_define:\ int\ ;`01_Type_int($0) ';;nn11 ;;; 10 cnt++;src
+0_define:\ void\ ;`01_Type_void($0) ';;nn11 ;;; 14 cnt++;src
+0_define:\ float\ ;`01_Type_float($0) ';;nn11 ;;; 12 cnt++;src
+0_define:\ double\ ;`01_Type_double($0) ';;nn11 ;;; 13 cnt++;src
+0_define:\ char\ ;`01_Type_char($0) ';;nn11 ;;; 11 cnt++;src
+END
+TEXT
+
+A pattern to collect the arguments of a function
+
+Stack d is used to set the type of the function
+
+END
+CODE
+0_specialchar:(;[@00-@27@29-@ff]
+0_pattern:function;[\(]~;stack_b argpos =0 ifthen abort 
+0_pattern:function;[@00-@ff]~;stack_c 0 stack_d @gettypes @clrtypes
+0_pattern:function;(;stack_c 1 +
+0_pattern:function;[(,][@00- ]*[!-@ff];stack_a begin-1 ;1
+0_pattern:function;);stack_c 1 - dup =0 if stack_a end stop endif
+0_pattern:function;,;stack_c dup <=1 if stack_a end endif
+END
+TEXT
+
+ deleting the line counter macro.
+
+END
+CODE
+0_define:`
+00_line(';`
+ ';;nn01);args;;;src
+END
+TEXT
+
+A macro for if
+
+END
+CODE
+0_define:\ if(;`01_If($0, $*)
+';;nr11;args;;;src
+END
+TEXT
+
+A macro for while
+
+END
+CODE
+0_define:\ while[ ]*(;`01_While($0, $*)
+';;nr11;function;;;src
+END
+TEXT
+
+A macro for a constant
+
+END
+CODE
+0_define:\ [1-9][0-9]*\ ;` 01_Constant_$0:';;rn11;;;;src
+0_define:\ 0[1-7][0-7]*\ ;` 01_Constant_oct_$4:';substr;rn11;;;stack_a dup 1 ;src
+0_define:\ 0[xX][0-9a-fA-F]+\ ;` 01_Constant_hex_$4:';substr;rn11;;;stack_a dup 2 ;src
+0_define:\ 0[bB][01]+\ ;` 01_Constant_bin_$4:';substr;rn11;;;stack_a dup 2 ;src
+END
+TEXT
+
+Macro and pattern for a block
+
+END
+CODE
+0_pattern:block;[@00-@ff]~;stack_a begin-1
+0_pattern:block;};stack_a end stop;1
+0_define:{;`00_Block($1)
+';;`nr00;';block;;;src
+END
+TEXT
+
+Macros for keywords
+
+END
+CODE
+0_define:\ return\ ;`01_Keyword($0)
+';;nn11;;;;src
+0_define:\ else\ ;`01_Keyword($0)
+';;nn11;;;;src
+END
+TEXT
+
+A macro to declare a function
+
+END
+CODE
+0_pattern:declfunc;[@00-@ff]~;stack_c 0 stack_d @gettypes @clrtypes
+0_pattern:declfunc;(;stack_c 1 +
+0_pattern:declfunc;[(,][@00- ]*[!-@ff];stack_a begin-1 ;1
+0_pattern:declfunc;);stack_c 1 - dup =0 if stack_a end stack_b begin endif
+0_pattern:declfunc;,;stack_c dup =1 if stack_a end endif
+0_pattern:declfunc;@3b; stack_b end stop
+0_def_mcall:\ [a-zA-Z_][a-zA-Z_0-9]*(;1_declare_func:;0;nr11;declfunc;;src
+0_define:1_declare_func:;`01_Decl_Fun($d0,$0,$b0,$*)
+0_define:\ $0(; 01_CallFunction($0,$`'@);;nr11;args;;;src
+0_define:\ $0\ ; 01_AddressFunction($0);;nn11;;;;src
+';;rn01;0;;@clrtypes;0
+END
+TEXT
+
+The rest should be undeclared variables
+
+END
+CODE
+0_def_mcall:\ [a-zA-Z_][a-zA-Z_0-9]*\e;1_declare_var:;0;nn11;;;src
+0_define:1_declare_var:;`0_declare_var_:\ $0\e; 01_Var_$0:
+01_DeclVar($d0, $0, $1)';;rn01;;;stack_d @gettypes @clrtypes;0
+0_define:0_declare_var:;;define;nr01;0;;stack_a "" "nn10" "" "" "" "src";0
+0_define:0_declare_var_:;;define;nr01;0;;stack_a "" "nn11" "" "" "" "src";0
+END
+
+TEXT
+
+Switch to macroset to work through source
+
+END
+CODE
+0_mset:src
+END

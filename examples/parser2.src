@@ -1,0 +1,39 @@
+COMMENT
+
+Copyright 2026 Marco de Beurs
+ 
+This file is part of m0.
+
+m0 is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License,
+or (at your option) any later version.
+
+m0 is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with m0. If not, see <https://www.gnu.org/licenses/>.
+
+END
+TEXT
+
+pointers
+
+END
+CODE
+0_define:[- *+][*]01_DeclVar(;`01_DeclVar($1 pointer,$2,$3)';;rn11;args;;;src
+0_define:[- *+][*] 01_Var_[a-zA-Z_][a-zA-Z_0-9]*:;` 01_ValofPoint($4)';substr;rn10;;;stack_a dup 2 ;src
+0_define:[- *+][*] 01_ValofPoint(;` 01_ValofPoint(01_ValofPoint($1))';;rn11;args;;;src
+0_define:[- +][&] 01_Var_[a-zA-Z_][a-zA-Z_0-9]*:;` 01_AdressOf($4)';substr;rn10;;;stack_a dup 2 ;src
+END
+TEXT
+
+Switch to macroset to work through source
+
+END
+CODE
+0_mset:src
+END

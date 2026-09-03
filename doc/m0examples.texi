@@ -1,0 +1,134 @@
+\input texinfo @c -*- texinfo -*-
+@comment ========================================================
+@comment %**start of header
+@setfilename m0examples.info
+@set UPDATED 8 June 2026
+@settitle Examples using the M0 macro processor
+@documentencoding UTF-8
+@set txicodequoteundirected
+@set txicodequotebacktick
+@set txidefnamenospace
+@setchapternewpage odd
+@finalout
+
+@c @tabchar{}
+@c ----------
+@c The testsuite expects literal tab output in some examples, but
+@c literal tabs in texinfo lead to formatting issues.
+@macro tabchar
+@	@c
+
+@end macro
+
+@c @ovar{ARG}
+@c -------------------
+@c The ARG is an optional argument.  To be used for macro arguments in
+@c their documentation (@defmac).
+@macro ovar{varname}
+@r{[}@var{\varname\}@r{]}
+@end macro
+
+@c @dvar{ARG, DEFAULT}
+@c -------------------
+@c The ARG is an optional argument, defaulting to DEFAULT.  To be used
+@c for macro arguments in their documentation (@defmac).
+@macro dvar{varname, default}
+@r{[}@var{\varname\} = @samp{\default\}@r{]}
+@end macro
+
+@comment %**end of header
+@comment ========================================================
+
+@copying
+
+This document is for use with M0, a package containing an implementation of the m0 macro
+language.
+
+Copyright @copyright{} 2026 Marco de Beurs
+
+
+@quotation
+Permission is granted to copy, distribute and/or modify this document
+under the terms of the GNU Free Documentation License,
+Version 1.3 or any later version published by the Free Software
+Foundation; with no Invariant Sections, no Front-Cover Texts, and no
+Back-Cover Texts.  A copy of the license is included in the section
+entitled ``GNU Free Documentation License.''
+@end quotation
+@end copying
+
+
+@titlepage
+@title Examples using the M0 macro processor
+@subtitle A parser implemented in M0
+@subtitle @value{UPDATED}
+@author by Marco de Beurs
+@author (@email{m0macroprocessor@@gmail.com})
+
+@page
+@vskip 0pt plus 1filll
+@insertcopying
+@end titlepage
+
+@contents
+
+@ifnottex
+@node Top
+@top Examples using M0
+@insertcopying
+@end ifnottex
+
+
+@node Introduction
+@chapter Introduction
+
+@section For the reader
+
+This document provides examples whereby the M0 macro processor is used.
+
+Useful for the curious and persons who want to use these for similar purposes.
+
+
+@section A C parser
+
+@subsection Introduction
+
+In this part the design and code to parse the c-language is used to
+demonstrate the possibilities of @code{m0}.
+
+
+This is still in a very early state and very incomplete.
+
+@subsection Common part
+
+@include parser.texi
+
+
+@subsection First step
+
+@include preparser.texi
+
+@subsection Second step
+
+@include parser1.texi
+
+
+@subsection Third step
+
+@include parser2.texi
+
+
+@subsection Fourth step
+
+@include parser3.texi
+
+
+@bye
+
+@c Local Variables:
+@c coding: utf-8
+@c fill-column: 72
+@c ispell-local-dictionary: "american"
+@c indent-tabs-mode: nil
+@c whitespace-check-buffer-indent: nil
+@c End:

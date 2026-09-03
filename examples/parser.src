@@ -1,0 +1,91 @@
+COMMENT
+
+Copyright 2026 Marco de Beurs
+ 
+This file is part of m0.
+
+m0 is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License,
+or (at your option) any later version.
+
+m0 is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with m0. If not, see <https://www.gnu.org/licenses/>.
+
+END
+TEXT
+
+At the start default macros are defined.
+This is all straightforward linking of macro names to builtin functions.
+
+END
+CODE
+0_define:0_divert:;;divert;nr01;0
+0_define:0_pattern:;;pattern;nr01;0
+0_define:0_append_pattern:;;append_p;nr01;0
+0_define:0_undefine:;;undefine;nr01;0
+0_define:0_clr_pattern:;;clr_pat;nr01;0
+0_define:0_copy_pattern:;;copy_pat;nr01;0
+0_define:0_set_var:;;set_var;nr01;0
+0_define:0_get_var:;;get_var;nr01;0
+0_define:0_ifmacro:;;ifmacro?;rr01;0
+0_define:0_argoptions:;;get_var;rr01;0;; stack_a pop_to_1 -7
+0_define:0_chars_pattern:;;charpat;nr01;0
+0_define:0_chars_args:;;chararg;nr01;0
+0_define:0_specialchar:;;specialc;nr01;0
+0_define:0_def_mcall:;;defmcall;nr01;0
+0_define:0_atlast:;;at_last;nr01;0
+0_define:0_mset:;;macroset;nr01;0
+0_define:0_info:;;info;nr01;0
+0_define:0_infofield:;$9;info;nr01;0
+0_define:0_setinfo:;;set_info;nr01;0
+0_define:0_copy:;;copy;nr01;0
+0_define:0_char:;;num2chr;nr01;0
+0_define:0_program:;;program;nr01;0
+0_define:0_part_macro:;;part_m;nr01;0
+0_define:0_tag_macro:;;tag_m;nr01;0
+0_define:0_link_parts:;;link_prt;nr01;0
+END
+TEXT
+
+Setting some defaults.
+
+END
+CODE
+0_chars_pattern:[]-\@+*?~
+0_chars_args:1$*@#$;101;102;103
+0_chars_args:1$*@#$;101;102;103;src
+0_set_var:101;`
+0_set_var:102;'
+0_set_var:103;, 
+END
+TEXT
+
+string in macro set @code{0} and macro set @code{src}.
+
+END
+CODE
+0_pattern:0string;[@00-@ff]~;stack_b 1 stack_a begin-1
+0_pattern:0string;`;stack_b 1 +
+0_pattern:0string;';stack_b 1 - dup =0 if stack_a end stop endif
+0_define:`;$1;;nn00;0string;;;src
+0_define:`;$1;;nn00;0string
+END
+TEXT
+
+A pattern to collect the arguments of non functions
+
+END
+CODE
+0_pattern:args;[\(]~;stack_b argpos =0 ifthen abort 
+0_pattern:args;[@00-@ff]~;stack_c 0 
+0_pattern:args;(;stack_c 1 +
+0_pattern:args;[(,][@00- ]*[!-@ff];stack_a begin-1 ;1
+0_pattern:args;);stack_c 1 - dup =0 if stack_a end stop endif
+0_pattern:args;,;stack_c dup <=1 if stack_a end endif
+END
